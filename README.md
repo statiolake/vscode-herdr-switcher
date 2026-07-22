@@ -1,4 +1,4 @@
-# vscode-herdr
+# Herdr Switcher
 
 Native VS Code navigation for [Herdr](https://github.com/ogulcancelik/herdr), the terminal workspace manager for AI coding agents.
 
