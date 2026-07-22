@@ -4,6 +4,10 @@
   "description": "A native VS Code workspace and agent navigator for Herdr.",
   "version": "0.1.0",
   "publisher": "statiolake",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/statiolake/vscode-herdr-switcher"
+  },
   "license": "MIT",
   "engines": {
     "vscode": "^1.96.0"
@@ -17,6 +21,12 @@
     "onView:herdr.agents"
   ],
   "main": "./dist/extension.js",
+  "files": [
+    "dist/extension.js",
+    "media/**",
+    "README.md",
+    "LICENSE"
+  ],
   "contributes": {
     "commands": [
       {
@@ -98,11 +108,13 @@
     "watch": "esbuild src/extension.ts --bundle --platform=node --external:vscode --sourcemap --outfile=dist/extension.js --watch",
     "check": "tsc --noEmit",
     "test": "npm run check && tsc -p tsconfig.test.json && node --test out-test/model.test.js",
-    "package": "npm run check && npm run build"
+    "package": "npm test && npm run build && vsce package",
+    "publish": "npm test && npm run build && vsce publish"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@types/vscode": "^1.96.0",
+    "@vscode/vsce": "^3.9.2",
     "esbuild": "^0.28.1",
     "typescript": "^5.7.2"
   }
