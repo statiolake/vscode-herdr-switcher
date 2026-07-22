@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "out-test",
+    "rootDir": "src",
+    "module": "Node16",
+    "noEmit": false
+  },
+  "include": ["src/**/*.test.ts", "src/model.ts", "src/types.ts"],
+  "exclude": []
+}

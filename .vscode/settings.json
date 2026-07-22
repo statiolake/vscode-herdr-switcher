@@ -1,0 +1,9 @@
+{
+  "files.exclude": {
+    "out-test": true
+  },
+  "search.exclude": {
+    "dist": true,
+    "out-test": true
+  }
+}

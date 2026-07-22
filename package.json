@@ -1,0 +1,109 @@
+{
+  "name": "vscode-herdr",
+  "displayName": "Herdr",
+  "description": "A native VS Code workspace and agent navigator for Herdr.",
+  "version": "0.1.0",
+  "publisher": "statiolake",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:herdr.spaces",
+    "onView:herdr.agents"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "herdr.refresh",
+        "title": "Herdr: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "herdr.openSpace",
+        "title": "Herdr: Open Space",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "herdr.openAgent",
+        "title": "Herdr: Open Agent",
+        "icon": "$(person)"
+      }
+    ],
+    "configuration": {
+      "title": "Herdr",
+      "properties": {
+        "herdr.executable": {
+          "type": "string",
+          "default": "herdr",
+          "description": "Path to the Herdr executable."
+        },
+        "herdr.session": {
+          "type": "string",
+          "default": "",
+          "description": "Herdr session name. Leave empty to use the default session."
+        },
+        "herdr.refreshInterval": {
+          "type": "number",
+          "default": 1000,
+          "minimum": 250,
+          "maximum": 10000,
+          "description": "Milliseconds between live sidebar snapshots."
+        },
+        "herdr.createSpaceOnOpen": {
+          "type": "boolean",
+          "default": true,
+          "description": "Create or associate a Herdr space for each folder opened in VS Code."
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "herdr",
+          "title": "Herdr",
+          "icon": "media/herdr.svg"
+        }
+      ]
+    },
+    "views": {
+      "herdr": [
+        {
+          "id": "herdr.spaces",
+          "name": "Spaces"
+        },
+        {
+          "id": "herdr.agents",
+          "name": "Agents"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "herdr.refresh",
+          "when": "view == herdr.spaces || view == herdr.agents",
+          "group": "navigation@1"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --platform=node --external:vscode --sourcemap --outfile=dist/extension.js",
+    "watch": "esbuild src/extension.ts --bundle --platform=node --external:vscode --sourcemap --outfile=dist/extension.js --watch",
+    "check": "tsc --noEmit",
+    "test": "npm run check && tsc -p tsconfig.test.json && node --test out-test/model.test.js",
+    "package": "npm run check && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.96.0",
+    "esbuild": "^0.28.1",
+    "typescript": "^5.7.2"
+  }
+}
