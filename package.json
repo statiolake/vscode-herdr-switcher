@@ -107,7 +107,7 @@
     "build": "esbuild src/extension.ts --bundle --platform=node --external:vscode --sourcemap --outfile=dist/extension.js",
     "watch": "esbuild src/extension.ts --bundle --platform=node --external:vscode --sourcemap --outfile=dist/extension.js --watch",
     "check": "tsc --noEmit",
-    "test": "npm run check && tsc -p tsconfig.test.json && node --test out-test/model.test.js",
+    "test": "npm run check && tsc -p tsconfig.test.json && node --test out-test/*.test.js",
     "package": "npm test && npm run build && vsce package",
     "publish": "npm test && npm run build && vsce publish"
   },

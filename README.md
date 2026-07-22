@@ -6,12 +6,16 @@ Native VS Code navigation for [Herdr](https://github.com/ogulcancelik/herdr), th
 
 - Creates or associates a Herdr space when a folder opens in VS Code.
 - Shows independent Spaces and Agents lists in one Activity Bar container, matching Herdr's sidebar structure.
-- Opens a space's root folder in a VS Code window.
-- Opens another workspace's VS Code window when you select one of its agents.
+- Opens a space's VS Code window, reveals the Herdr sidebar, and focuses that Herdr workspace without opening a terminal.
+- Opens another workspace's VS Code window when you select one of its agents, then reveals Herdr, opens its terminal in the editor area, and focuses that agent.
 - In the current workspace, focuses the selected Herdr agent and opens or reuses an integrated Herdr terminal.
 - Starts a headless Herdr server when folder association needs one and no server is running.
 
 Herdr remains the source of truth for spaces, panes, agents, and semantic agent states. The extension stores only the association between a VS Code folder and a Herdr workspace ID. Existing spaces are initially associated by exact worktree checkout path or root-pane cwd.
+
+Each extension instance checks on every snapshot poll that its VS Code folder still has a corresponding Herdr space, recreating and rebinding it when necessary.
+
+Cross-window navigation uses short-lived Herdr workspace and pane metadata tokens as delivery intents. The destination window consumes and clears its intent after it has focused the requested space or agent. This requires Herdr 0.7.5 or later.
 
 ## Development
 
@@ -38,7 +42,3 @@ and test.
 - `herdr.session`: optional named Herdr session
 - `herdr.refreshInterval`: sidebar snapshot interval in milliseconds (default: `1000`)
 - `herdr.createSpaceOnOpen`: create/associate spaces on folder open (default: `true`)
-
-## Current cross-window behavior
-
-Selecting an agent in another root workspace opens that workspace's VS Code window. VS Code does not provide a direct command channel to the extension host in the other window, so forwarding the pane target and focusing it there remains future work.

@@ -38,6 +38,34 @@ export class HerdrClient {
     await this.runJson(["workspace", "focus", workspaceId]);
   }
 
+  async setWorkspaceToken(workspaceId: string, source: string, key: string, value: string, ttlMs: number): Promise<void> {
+    await this.runJson([
+      "workspace", "report-metadata", workspaceId,
+      "--source", source, "--token", `${key}=${value}`, "--ttl-ms", String(ttlMs),
+    ]);
+  }
+
+  async clearWorkspaceToken(workspaceId: string, source: string, key: string): Promise<void> {
+    await this.runJson([
+      "workspace", "report-metadata", workspaceId,
+      "--source", source, "--clear-token", key,
+    ]);
+  }
+
+  async setPaneToken(paneId: string, source: string, key: string, value: string, ttlMs: number): Promise<void> {
+    await this.runJson([
+      "pane", "report-metadata", paneId,
+      "--source", source, "--token", `${key}=${value}`, "--ttl-ms", String(ttlMs),
+    ]);
+  }
+
+  async clearPaneToken(paneId: string, source: string, key: string): Promise<void> {
+    await this.runJson([
+      "pane", "report-metadata", paneId,
+      "--source", source, "--clear-token", key,
+    ]);
+  }
+
   terminalArgs(): string[] {
     return this.options.session ? ["--session", this.options.session] : [];
   }

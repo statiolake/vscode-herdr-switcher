@@ -24,6 +24,7 @@ export interface HerdrPane {
   tab_id: string;
   cwd?: string;
   foreground_cwd?: string;
+  tokens?: Record<string, string>;
 }
 
 export interface HerdrTab {
@@ -50,6 +51,7 @@ export interface HerdrAgent {
   focused: boolean;
   cwd?: string;
   foreground_cwd?: string;
+  tokens?: Record<string, string>;
 }
 
 export interface HerdrSnapshot {
