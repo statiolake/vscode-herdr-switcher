@@ -44,6 +44,17 @@ test("falls back to the target workspace intent", () => {
   });
 });
 
+test("an attach intent takes precedence over workspace focus", () => {
+  const value = snapshot();
+  value.workspaces[0]!.tokens = {
+    "vscode-navigation-intent": "space-request",
+    "vscode-attach-intent": "attach-request",
+  };
+  assert.deepEqual(findNavigationIntent(value, "w1"), {
+    requestId: "attach-request", workspaceId: "w1", kind: "attach",
+  });
+});
+
 test("a close intent takes precedence over focus intents", () => {
   const value = snapshot();
   value.workspaces[0]!.tokens = {

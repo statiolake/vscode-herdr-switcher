@@ -187,6 +187,21 @@ class HerdrController implements vscode.Disposable {
   }
 
   async attachSpace(node: SpaceNode): Promise<void> {
+    const root = this.boundRoot(node.workspace.workspace_id) ?? node.root;
+    if (!root) {
+      void vscode.window.showWarningMessage(`Herdr space “${node.workspace.label}” has no folder association.`);
+      return;
+    }
+    if (!this.isCurrentRoot(root)) {
+      try {
+        await this.navigationIntents.publishAttach(node.workspace.workspace_id);
+        await this.client.focusWorkspace(node.workspace.workspace_id);
+        await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(root), { forceNewWindow: true });
+      } catch (error) {
+        void vscode.window.showErrorMessage(`Could not attach to Herdr space: ${errorMessage(error)}`);
+      }
+      return;
+    }
     try {
       await this.prepareTerminal();
       await this.retryFocus(() => this.client.focusWorkspace(node.workspace.workspace_id));
@@ -350,9 +365,13 @@ class HerdrController implements vscode.Disposable {
       }
       await vscode.commands.executeCommand("workbench.view.extension.herdr");
       await vscode.commands.executeCommand(intent.kind === "agent" ? "herdr.agents.focus" : "herdr.spaces.focus");
-      if (intent.kind === "agent") {
+      if (intent.kind === "agent" || intent.kind === "attach") {
         await this.prepareTerminal();
-        await this.retryFocus(() => this.client.focusAgent(intent.paneId));
+        if (intent.kind === "agent") {
+          await this.retryFocus(() => this.client.focusAgent(intent.paneId));
+        } else {
+          await this.retryFocus(() => this.client.focusWorkspace(intent.workspaceId));
+        }
       } else {
         await this.retryFocus(() => this.client.focusWorkspace(intent.workspaceId));
       }

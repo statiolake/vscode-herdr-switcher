@@ -3,11 +3,13 @@ import type { HerdrSnapshot } from "./types";
 
 const SOURCE = "vscode-herdr-switcher";
 const TOKEN = "vscode-navigation-intent";
+const ATTACH_TOKEN = "vscode-attach-intent";
 const CLOSE_TOKEN = "vscode-close-intent";
 const TTL_MS = 60_000;
 
 export type NavigationIntent =
   | { requestId: string; workspaceId: string; kind: "workspace" }
+  | { requestId: string; workspaceId: string; kind: "attach" }
   | { requestId: string; workspaceId: string; kind: "agent"; paneId: string }
   | { requestId: string; workspaceId: string; kind: "close" };
 
@@ -20,6 +22,10 @@ export class HerdrNavigationIntentStore {
 
   async publishAgent(paneId: string): Promise<void> {
     await this.client.setPaneToken(paneId, SOURCE, TOKEN, requestId(), TTL_MS);
+  }
+
+  async publishAttach(workspaceId: string): Promise<void> {
+    await this.client.setWorkspaceToken(workspaceId, SOURCE, ATTACH_TOKEN, requestId(), TTL_MS);
   }
 
   async publishClose(workspaceId: string): Promise<void> {
@@ -36,7 +42,9 @@ export class HerdrNavigationIntentStore {
       return;
     }
     await this.client.clearWorkspaceToken(
-      intent.workspaceId, SOURCE, intent.kind === "close" ? CLOSE_TOKEN : TOKEN,
+      intent.workspaceId,
+      SOURCE,
+      intent.kind === "close" ? CLOSE_TOKEN : intent.kind === "attach" ? ATTACH_TOKEN : TOKEN,
     );
   }
 }
@@ -56,6 +64,10 @@ export function findNavigationIntent(
   const paneRequestId = pane?.tokens?.[TOKEN];
   if (pane && paneRequestId) {
     return { requestId: paneRequestId, workspaceId, kind: "agent", paneId: pane.pane_id };
+  }
+  const attachRequestId = workspace?.tokens?.[ATTACH_TOKEN];
+  if (attachRequestId) {
+    return { requestId: attachRequestId, workspaceId, kind: "attach" };
   }
   const workspaceRequestId = workspace?.tokens?.[TOKEN];
   return workspaceRequestId
