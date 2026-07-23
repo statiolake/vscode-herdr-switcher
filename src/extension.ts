@@ -393,8 +393,7 @@ class HerdrController implements vscode.Disposable {
     const existing = candidate && isTransientTerminal(candidate) ? candidate : undefined;
     if (existing) {
       this.terminal = existing;
-      existing.show(false);
-      await waitForTerminalProcess(existing);
+      await this.showPinnedTerminal(existing);
       return existing;
     }
     if (candidate && isOwnedHerdrTerminal(candidate, this.terminalName())) {
@@ -412,9 +411,14 @@ class HerdrController implements vscode.Disposable {
       },
       isTransient: true,
     });
-    this.terminal.show(false);
-    await waitForTerminalProcess(this.terminal);
+    await this.showPinnedTerminal(this.terminal);
     return this.terminal;
+  }
+
+  private async showPinnedTerminal(terminal: vscode.Terminal): Promise<void> {
+    terminal.show(false);
+    await waitForTerminalProcess(terminal);
+    await vscode.commands.executeCommand("workbench.action.pinEditor");
   }
 
   private async runningProcesses(workspaceId: string) {
