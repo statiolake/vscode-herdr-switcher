@@ -294,7 +294,7 @@ class HerdrController implements vscode.Disposable {
   }
 
   private async consumeNavigationIntent(): Promise<boolean> {
-    if (!vscode.window.state.focused || !this.snapshot) {
+    if (!this.snapshot) {
       return false;
     }
     const workspace = this.currentWorkspace();
@@ -303,6 +303,9 @@ class HerdrController implements vscode.Disposable {
     }
     const intent = this.navigationIntents.find(this.snapshot, workspace.workspace_id);
     if (!intent) {
+      return false;
+    }
+    if (intent.kind !== "close" && !vscode.window.state.focused) {
       return false;
     }
     if (this.handlingNavigationIntent === intent.requestId) {
