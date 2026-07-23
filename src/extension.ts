@@ -39,6 +39,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("herdr.refresh", () => controller.refresh(true)),
     vscode.commands.registerCommand("herdr.openSpace", (node: SpaceNode) => controller.openSpace(node)),
     vscode.commands.registerCommand("herdr.openAgent", (node: AgentNode) => controller.openAgent(node)),
+    vscode.commands.registerCommand("herdr.attachSpace", (node: SpaceNode) => controller.attachSpace(node)),
+    vscode.commands.registerCommand("herdr.spaceActions", (node: SpaceNode) => controller.showSpaceActions(node)),
     vscode.commands.registerCommand("herdr.closeSpace", (node: SpaceNode) => controller.closeSpace(node)),
     vscode.commands.registerCommand("herdr.addAgent", () => controller.addAgent()),
     vscode.commands.registerCommand("herdr.addDefaultAgent", () => controller.addDefaultAgent()),
@@ -181,6 +183,30 @@ class HerdrController implements vscode.Disposable {
       await this.refresh(false);
     } catch (error) {
       void vscode.window.showErrorMessage(`Could not focus Herdr agent: ${errorMessage(error)}`);
+    }
+  }
+
+  async attachSpace(node: SpaceNode): Promise<void> {
+    try {
+      await this.prepareTerminal();
+      await this.retryFocus(() => this.client.focusWorkspace(node.workspace.workspace_id));
+      await this.refresh(false);
+    } catch (error) {
+      void vscode.window.showErrorMessage(`Could not attach to Herdr space: ${errorMessage(error)}`);
+    }
+  }
+
+  async showSpaceActions(node: SpaceNode): Promise<void> {
+    const selected = await vscode.window.showQuickPick(
+      [{
+        label: "$(trash) Close Space",
+        description: node.workspace.label,
+        action: "close" as const,
+      }],
+      { title: `Herdr Space: ${node.workspace.label}`, placeHolder: "Choose an action" },
+    );
+    if (selected?.action === "close") {
+      await this.closeSpace(node);
     }
   }
 
