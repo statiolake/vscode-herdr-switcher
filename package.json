@@ -65,16 +65,19 @@
       "properties": {
         "herdr.executable": {
           "type": "string",
+          "scope": "application",
           "default": "herdr",
           "description": "Path to the Herdr executable."
         },
         "herdr.session": {
           "type": "string",
+          "scope": "application",
           "default": "",
           "description": "Herdr session name. Leave empty to use the default session."
         },
         "herdr.refreshInterval": {
           "type": "number",
+          "scope": "application",
           "default": 1000,
           "minimum": 250,
           "maximum": 10000,
@@ -82,11 +85,13 @@
         },
         "herdr.createSpaceOnOpen": {
           "type": "boolean",
+          "scope": "application",
           "default": true,
           "description": "Create or associate a Herdr space for each folder opened in VS Code."
         },
         "herdr.agents": {
           "type": "array",
+          "scope": "application",
           "default": [
             { "name": "Claude Code", "command": ["claude"] },
             { "name": "Codex", "command": ["codex"] }
@@ -112,6 +117,7 @@
         },
         "herdr.defaultAgent": {
           "type": "string",
+          "scope": "application",
           "default": "Claude Code",
           "description": "Agent name from herdr.agents launched by the + button."
         }
