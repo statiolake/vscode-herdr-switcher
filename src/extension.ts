@@ -409,22 +409,16 @@ class HerdrController implements vscode.Disposable {
             throw new Error("The current VS Code folder is not associated with a Herdr space.");
           }
           const { workspace, root } = association;
-          const targetPane = this.snapshot.panes.find((pane) =>
-            pane.workspace_id === workspace.workspace_id && pane.tab_id === workspace.active_tab_id,
-          ) ?? this.snapshot.panes.find((pane) => pane.workspace_id === workspace.workspace_id);
-          if (!targetPane) {
-            throw new Error("The current Herdr space has no pane to split.");
-          }
           await this.prepareTerminal();
           await this.client.focusWorkspace(workspace.workspace_id);
-          const pane = await this.client.splitPane(targetPane.pane_id, root);
+          const created = await this.client.createTab(workspace.workspace_id, root, agent.name);
           try {
-            await this.client.runPane(pane.pane_id, shellCommand(agent.command));
+            await this.client.runPane(created.root_pane.pane_id, shellCommand(agent.command));
           } catch (error) {
             try {
-              await this.client.closePane(pane.pane_id);
+              await this.client.closeTab(created.tab.tab_id);
             } catch (rollbackError) {
-              this.output.warn(`Could not roll back pane ${pane.pane_id}: ${errorMessage(rollbackError)}`);
+              this.output.warn(`Could not roll back tab ${created.tab.tab_id}: ${errorMessage(rollbackError)}`);
             }
             throw error;
           }

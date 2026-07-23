@@ -92,3 +92,8 @@ export interface WorkspaceCreatedResult {
   workspace: HerdrWorkspace;
   root_pane: HerdrPane;
 }
+
+export interface TabCreatedResult {
+  tab: HerdrTab;
+  root_pane: HerdrPane;
+}
