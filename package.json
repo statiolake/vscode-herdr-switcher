@@ -2,7 +2,7 @@
   "name": "vscode-herdr-switcher",
   "displayName": "Herdr Switcher",
   "description": "A native VS Code workspace and agent navigator for Herdr.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "statiolake",
   "repository": {
     "type": "git",
