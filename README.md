@@ -9,6 +9,8 @@ Native VS Code navigation for [Herdr](https://github.com/ogulcancelik/herdr), th
 - Opens a space's VS Code window, reveals the Herdr sidebar, and focuses that Herdr workspace without opening a terminal.
 - Opens another workspace's VS Code window when you select one of its agents, then reveals Herdr, opens its terminal in the editor area, and focuses that agent.
 - In the current workspace, focuses the selected Herdr agent and opens or reuses an integrated Herdr terminal.
+- Closes a Herdr space from its inline trash button and warns before terminating non-shell foreground processes.
+- Starts configured agents from the Agents header, with a one-click default agent button.
 - Starts a headless Herdr server when folder association needs one and no server is running.
 
 Herdr remains the source of truth for spaces, panes, agents, and semantic agent states. The extension stores only the association between a VS Code folder and a Herdr workspace ID. Existing spaces are initially associated by exact worktree checkout path or root-pane cwd.
@@ -42,3 +44,17 @@ and test.
 - `herdr.session`: optional named Herdr session
 - `herdr.refreshInterval`: sidebar snapshot interval in milliseconds (default: `1000`)
 - `herdr.createSpaceOnOpen`: create/associate spaces on folder open (default: `true`)
+- `herdr.agents`: agents shown in the Add Agent picker
+- `herdr.defaultAgent`: agent name launched by the `+` button
+
+Example:
+
+```json
+{
+  "herdr.agents": [
+    { "name": "Claude Code", "command": ["claude"] },
+    { "name": "Codex", "command": ["codex"] }
+  ],
+  "herdr.defaultAgent": "Claude Code"
+}
+```

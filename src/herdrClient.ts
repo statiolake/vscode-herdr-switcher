@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import type { HerdrResponse, HerdrSnapshot, WorkspaceCreatedResult } from "./types";
+import type { HerdrPane, HerdrResponse, HerdrSnapshot, PaneProcessInfo, WorkspaceCreatedResult } from "./types";
 
 export interface HerdrClientOptions {
   executable: string;
@@ -64,6 +64,32 @@ export class HerdrClient {
       "pane", "report-metadata", paneId,
       "--source", source, "--clear-token", key,
     ]);
+  }
+
+  async paneProcessInfo(paneId: string): Promise<PaneProcessInfo> {
+    const result = await this.runJson<{ process_info: PaneProcessInfo }>([
+      "pane", "process-info", "--pane", paneId,
+    ]);
+    return { ...result.process_info, foreground_processes: result.process_info.foreground_processes ?? [] };
+  }
+
+  async closeWorkspace(workspaceId: string): Promise<void> {
+    await this.runJson(["workspace", "close", workspaceId]);
+  }
+
+  async splitPane(paneId: string, cwd: string): Promise<HerdrPane> {
+    const result = await this.runJson<{ pane: HerdrPane }>([
+      "pane", "split", "--pane", paneId, "--direction", "right", "--cwd", cwd, "--focus",
+    ]);
+    return result.pane;
+  }
+
+  async runPane(paneId: string, command: string): Promise<void> {
+    await this.runJson(["pane", "run", paneId, command]);
+  }
+
+  async closePane(paneId: string): Promise<void> {
+    await this.runJson(["pane", "close", paneId]);
   }
 
   terminalArgs(): string[] {

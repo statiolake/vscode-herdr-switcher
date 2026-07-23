@@ -43,3 +43,15 @@ test("falls back to the target workspace intent", () => {
     requestId: "space-request", workspaceId: "w1", kind: "workspace",
   });
 });
+
+test("a close intent takes precedence over focus intents", () => {
+  const value = snapshot();
+  value.workspaces[0]!.tokens = {
+    "vscode-navigation-intent": "space-request",
+    "vscode-close-intent": "close-request",
+  };
+  value.panes[0]!.tokens = { "vscode-navigation-intent": "agent-request" };
+  assert.deepEqual(findNavigationIntent(value, "w1"), {
+    requestId: "close-request", workspaceId: "w1", kind: "close",
+  });
+});

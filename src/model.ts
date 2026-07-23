@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import type { HerdrAgent, HerdrSnapshot, HerdrWorkspace } from "./types";
+import type { HerdrAgent, HerdrSnapshot, HerdrWorkspace, PaneProcess, PaneProcessInfo } from "./types";
 
 export interface SpaceBinding {
   root: string;
@@ -49,6 +49,30 @@ export function agentsForWorkspace(snapshot: HerdrSnapshot, workspaceId: string)
   return snapshot.agents
     .filter((agent) => agent.workspace_id === workspaceId)
     .sort((left, right) => left.pane_id.localeCompare(right.pane_id, undefined, { numeric: true }));
+}
+
+export interface ActiveTreeSelection {
+  workspaceId?: string;
+  agentPaneId?: string;
+}
+
+export function activeTreeSelection(snapshot: HerdrSnapshot): ActiveTreeSelection {
+  const pane = snapshot.focused_pane_id
+    ? snapshot.panes.find((candidate) => candidate.pane_id === snapshot.focused_pane_id)
+    : undefined;
+  const agentPaneId = pane && snapshot.agents.some((agent) => agent.pane_id === pane.pane_id)
+    ? pane.pane_id
+    : undefined;
+  return {
+    workspaceId: pane?.workspace_id ?? snapshot.focused_workspace_id,
+    agentPaneId,
+  };
+}
+
+export function nonShellForegroundProcesses(infos: readonly PaneProcessInfo[]): PaneProcess[] {
+  return infos.flatMap((info) =>
+    info.foreground_processes.filter((process) => process.pid !== info.shell_pid),
+  );
 }
 
 function paneOrdinal(paneId: string): number {

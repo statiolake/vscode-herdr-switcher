@@ -43,6 +43,21 @@
         "command": "herdr.openAgent",
         "title": "Herdr: Open Agent",
         "icon": "$(person)"
+      },
+      {
+        "command": "herdr.closeSpace",
+        "title": "Herdr: Close Space",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "herdr.addAgent",
+        "title": "Herdr: Add Agent...",
+        "icon": "$(list-selection)"
+      },
+      {
+        "command": "herdr.addDefaultAgent",
+        "title": "Herdr: Add Default Agent",
+        "icon": "$(add)"
       }
     ],
     "configuration": {
@@ -69,6 +84,36 @@
           "type": "boolean",
           "default": true,
           "description": "Create or associate a Herdr space for each folder opened in VS Code."
+        },
+        "herdr.agents": {
+          "type": "array",
+          "default": [
+            { "name": "Claude Code", "command": ["claude"] },
+            { "name": "Codex", "command": ["codex"] }
+          ],
+          "description": "Agents available from the Herdr Agents view.",
+          "items": {
+            "type": "object",
+            "required": ["name", "command"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Display name used by the agent picker and defaultAgent setting."
+              },
+              "command": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string" },
+                "description": "Command and arguments to run in the new Herdr pane."
+              }
+            }
+          }
+        },
+        "herdr.defaultAgent": {
+          "type": "string",
+          "default": "Claude Code",
+          "description": "Agent name from herdr.agents launched by the + button."
         }
       }
     },
@@ -99,6 +144,23 @@
           "command": "herdr.refresh",
           "when": "view == herdr.spaces || view == herdr.agents",
           "group": "navigation@1"
+        },
+        {
+          "command": "herdr.addAgent",
+          "when": "view == herdr.agents",
+          "group": "navigation@2"
+        },
+        {
+          "command": "herdr.addDefaultAgent",
+          "when": "view == herdr.agents",
+          "group": "navigation@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "herdr.closeSpace",
+          "when": "view == herdr.spaces && viewItem == herdrSpace",
+          "group": "inline"
         }
       ]
     }

@@ -27,6 +27,22 @@ export interface HerdrPane {
   tokens?: Record<string, string>;
 }
 
+export interface PaneProcess {
+  pid: number;
+  name: string;
+  argv0?: string;
+  argv?: string[];
+  cmdline?: string;
+  cwd?: string;
+}
+
+export interface PaneProcessInfo {
+  pane_id: string;
+  shell_pid?: number;
+  foreground_process_group_id?: number;
+  foreground_processes: PaneProcess[];
+}
+
 export interface HerdrTab {
   tab_id: string;
   workspace_id: string;
@@ -58,6 +74,8 @@ export interface HerdrSnapshot {
   version: string;
   protocol: number;
   focused_workspace_id?: string;
+  focused_tab_id?: string;
+  focused_pane_id?: string;
   workspaces: HerdrWorkspace[];
   tabs: HerdrTab[];
   panes: HerdrPane[];

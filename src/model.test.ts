@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { agentsForWorkspace, findWorkspaceForRoot, inferWorkspaceRoot, normalizeRoot } from "./model";
+import { activeTreeSelection, agentsForWorkspace, findWorkspaceForRoot, inferWorkspaceRoot, nonShellForegroundProcesses, normalizeRoot } from "./model";
 import type { HerdrSnapshot } from "./types";
 
 const snapshot: HerdrSnapshot = {
@@ -45,4 +45,30 @@ test("agents are grouped and pane-sorted", () => {
 
 test("normalization removes trailing separators", () => {
   assert.equal(normalizeRoot("/repo-one/"), normalizeRoot("/repo-one"));
+});
+
+test("tree selection follows the active agent pane", () => {
+  const value = structuredClone(snapshot);
+  value.focused_pane_id = "w1:p2";
+  assert.deepEqual(activeTreeSelection(value), { workspaceId: "w1", agentPaneId: "w1:p2" });
+});
+
+test("tree selection clears the agent for a non-agent pane", () => {
+  const value = structuredClone(snapshot);
+  value.panes.push({ pane_id: "w1:p3", workspace_id: "w1", tab_id: "w1:t1" });
+  value.focused_pane_id = "w1:p3";
+  assert.deepEqual(activeTreeSelection(value), { workspaceId: "w1", agentPaneId: undefined });
+});
+
+test("close confirmation ignores shells but keeps other foreground processes", () => {
+  assert.deepEqual(nonShellForegroundProcesses([
+    {
+      pane_id: "w1:p1",
+      shell_pid: 10,
+      foreground_processes: [
+        { pid: 10, name: "zsh" },
+        { pid: 20, name: "codex" },
+      ],
+    },
+  ]), [{ pid: 20, name: "codex" }]);
 });

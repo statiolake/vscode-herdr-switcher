@@ -1,8 +1,9 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { configuredAgents, shellCommand, type ConfiguredAgent } from "./agentConfiguration";
 import { GitBranchProvider } from "./gitBranchProvider";
 import { HerdrClient, HerdrCommandError } from "./herdrClient";
-import { findWorkspaceForRoot, normalizeRoot, type SpaceBinding } from "./model";
+import { activeTreeSelection, findWorkspaceForRoot, nonShellForegroundProcesses, normalizeRoot, type SpaceBinding } from "./model";
 import { HerdrNavigationIntentStore } from "./navigationIntent";
 import {
   AgentsTreeProvider,
@@ -21,17 +22,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const store = new HerdrSnapshotStore();
   const spaces = new SpacesTreeProvider(store);
   const agents = new AgentsTreeProvider(store);
+  const spacesView = vscode.window.createTreeView("herdr.spaces", { treeDataProvider: spaces });
+  const agentsView = vscode.window.createTreeView("herdr.agents", { treeDataProvider: agents });
   const controller = new HerdrController(context, store, output);
+  const syncSelection = () => synchronizeTreeSelection(store, spaces, agents, spacesView, agentsView, output);
   context.subscriptions.push(
     output,
     store,
     spaces,
     agents,
-    vscode.window.registerTreeDataProvider("herdr.spaces", spaces),
-    vscode.window.registerTreeDataProvider("herdr.agents", agents),
+    spacesView,
+    agentsView,
+    store.onDidChange(() => { void syncSelection(); }),
+    spacesView.onDidChangeVisibility(() => { void syncSelection(); }),
+    agentsView.onDidChangeVisibility(() => { void syncSelection(); }),
     vscode.commands.registerCommand("herdr.refresh", () => controller.refresh(true)),
     vscode.commands.registerCommand("herdr.openSpace", (node: SpaceNode) => controller.openSpace(node)),
     vscode.commands.registerCommand("herdr.openAgent", (node: AgentNode) => controller.openAgent(node)),
+    vscode.commands.registerCommand("herdr.closeSpace", (node: SpaceNode) => controller.closeSpace(node)),
+    vscode.commands.registerCommand("herdr.addAgent", () => controller.addAgent()),
+    vscode.commands.registerCommand("herdr.addDefaultAgent", () => controller.addDefaultAgent()),
     vscode.workspace.onDidChangeWorkspaceFolders(() => controller.reconcileFolders()),
     vscode.window.onDidChangeWindowState((state) => {
       if (state.focused) {
@@ -61,6 +71,7 @@ class HerdrController implements vscode.Disposable {
   private serverStartAttempted = false;
   private handlingNavigationIntent: string | undefined;
   private readonly reportedSpaceCreationErrors = new Set<string>();
+  private readonly closingRoots = new Set<string>();
   private readonly gitBranches = new GitBranchProvider();
 
   constructor(
@@ -173,6 +184,69 @@ class HerdrController implements vscode.Disposable {
     }
   }
 
+  async closeSpace(node: SpaceNode): Promise<void> {
+    const root = this.boundRoot(node.workspace.workspace_id) ?? node.root;
+    if (!root) {
+      void vscode.window.showWarningMessage(`Herdr space “${node.workspace.label}” has no folder association.`);
+      return;
+    }
+    let running;
+    try {
+      await this.refresh(false);
+      running = await this.runningProcesses(node.workspace.workspace_id);
+    } catch (error) {
+      void vscode.window.showErrorMessage(`Could not inspect Herdr space processes: ${errorMessage(error)}`);
+      return;
+    }
+    if (running.length > 0) {
+      const preview = running.slice(0, 5).map((process) => `${process.name} (PID ${process.pid})`).join(", ");
+      const more = running.length > 5 ? ` and ${running.length - 5} more` : "";
+      const accepted = await vscode.window.showWarningMessage(
+        `“${node.workspace.label}” has running processes: ${preview}${more}. Close the space and its VS Code window?`,
+        { modal: true },
+        "Close Anyway",
+      );
+      if (accepted !== "Close Anyway") {
+        return;
+      }
+    }
+    try {
+      if (this.isCurrentRoot(root)) {
+        await this.closeCurrentWindowSpace(node.workspace.workspace_id, root);
+      } else {
+        await this.navigationIntents.publishClose(node.workspace.workspace_id);
+        await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(root), { forceNewWindow: true });
+      }
+    } catch (error) {
+      void vscode.window.showErrorMessage(`Could not close Herdr space: ${errorMessage(error)}`);
+    }
+  }
+
+  async addAgent(): Promise<void> {
+    const agents = this.configuredAgentList();
+    if (agents.length === 0) {
+      void vscode.window.showWarningMessage("No valid agents are configured in herdr.agents.");
+      return;
+    }
+    const selected = await vscode.window.showQuickPick(
+      agents.map((agent) => ({ label: agent.name, description: agent.command.join(" "), agent })),
+      { title: "Add Herdr Agent", placeHolder: "Choose an agent to start" },
+    );
+    if (selected) {
+      await this.startConfiguredAgent(selected.agent);
+    }
+  }
+
+  async addDefaultAgent(): Promise<void> {
+    const name = vscode.workspace.getConfiguration("herdr").get<string>("defaultAgent", "Claude Code");
+    const agent = this.configuredAgentList().find((candidate) => candidate.name === name);
+    if (!agent) {
+      void vscode.window.showWarningMessage(`Default agent “${name}” is not present in herdr.agents.`);
+      return;
+    }
+    await this.startConfiguredAgent(agent);
+  }
+
   async handleWindowActivated(): Promise<void> {
     await this.refresh(false);
     await this.reconcileFolders();
@@ -236,6 +310,15 @@ class HerdrController implements vscode.Disposable {
     }
     this.handlingNavigationIntent = intent.requestId;
     try {
+      if (intent.kind === "close") {
+        const association = this.currentWorkspaceAssociation();
+        if (!association || association.workspace.workspace_id !== intent.workspaceId) {
+          return false;
+        }
+        await this.navigationIntents.acknowledge(intent);
+        await this.closeCurrentWindowSpace(intent.workspaceId, association.root);
+        return true;
+      }
       await vscode.commands.executeCommand("workbench.view.extension.herdr");
       await vscode.commands.executeCommand(intent.kind === "agent" ? "herdr.agents.focus" : "herdr.spaces.focus");
       if (intent.kind === "agent") {
@@ -286,14 +369,86 @@ class HerdrController implements vscode.Disposable {
     return this.terminal;
   }
 
+  private async runningProcesses(workspaceId: string) {
+    const panes = this.snapshot?.panes.filter((pane) => pane.workspace_id === workspaceId) ?? [];
+    const infos = await Promise.all(panes.map((pane) => this.client.paneProcessInfo(pane.pane_id)));
+    return nonShellForegroundProcesses(infos);
+  }
+
+  private async closeCurrentWindowSpace(workspaceId: string, root: string): Promise<void> {
+    const normalized = normalizeRoot(root);
+    this.closingRoots.add(normalized);
+    await this.removeBinding(root, workspaceId);
+    try {
+      await this.client.closeWorkspace(workspaceId);
+      await vscode.commands.executeCommand("workbench.action.closeWindow");
+    } catch (error) {
+      this.closingRoots.delete(normalized);
+      throw error;
+    }
+    setTimeout(() => {
+      if (!this.disposed) {
+        this.closingRoots.delete(normalized);
+        void this.reconcileFolders();
+      }
+    }, 3_000);
+  }
+
+  private async startConfiguredAgent(agent: ConfiguredAgent): Promise<void> {
+    try {
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: `Starting ${agent.name} in Herdr…` },
+        async () => {
+          await this.refresh(false);
+          await this.reconcileFolders();
+          const association = this.currentWorkspaceAssociation();
+          if (!association || !this.snapshot) {
+            throw new Error("The current VS Code folder is not associated with a Herdr space.");
+          }
+          const { workspace, root } = association;
+          const targetPane = this.snapshot.panes.find((pane) =>
+            pane.workspace_id === workspace.workspace_id && pane.tab_id === workspace.active_tab_id,
+          ) ?? this.snapshot.panes.find((pane) => pane.workspace_id === workspace.workspace_id);
+          if (!targetPane) {
+            throw new Error("The current Herdr space has no pane to split.");
+          }
+          await this.prepareTerminal();
+          await this.client.focusWorkspace(workspace.workspace_id);
+          const pane = await this.client.splitPane(targetPane.pane_id, root);
+          try {
+            await this.client.runPane(pane.pane_id, shellCommand(agent.command));
+          } catch (error) {
+            try {
+              await this.client.closePane(pane.pane_id);
+            } catch (rollbackError) {
+              this.output.warn(`Could not roll back pane ${pane.pane_id}: ${errorMessage(rollbackError)}`);
+            }
+            throw error;
+          }
+          await this.refresh(false);
+        },
+      );
+    } catch (error) {
+      void vscode.window.showErrorMessage(`Could not start Herdr agent: ${errorMessage(error)}`);
+    }
+  }
+
+  private configuredAgentList(): ConfiguredAgent[] {
+    return configuredAgents(vscode.workspace.getConfiguration("herdr").get("agents"));
+  }
+
   private currentWorkspace() {
+    return this.currentWorkspaceAssociation()?.workspace;
+  }
+
+  private currentWorkspaceAssociation() {
     if (!this.snapshot) {
       return undefined;
     }
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
       const workspace = findWorkspaceForRoot(this.snapshot, folder.uri.fsPath, this.bindings());
       if (workspace) {
-        return workspace;
+        return { workspace, root: folder.uri.fsPath };
       }
     }
     return undefined;
@@ -314,6 +469,9 @@ class HerdrController implements vscode.Disposable {
   }
 
   private async ensureSpace(root: string, label: string): Promise<boolean> {
+    if (this.closingRoots.has(normalizeRoot(root))) {
+      return false;
+    }
     if (!this.snapshot) {
       return false;
     }
@@ -408,6 +566,14 @@ class HerdrController implements vscode.Disposable {
     await this.context.globalState.update(BINDINGS_KEY, next);
   }
 
+  private async removeBinding(root: string, workspaceId: string): Promise<void> {
+    const normalized = normalizeRoot(root);
+    const next = this.bindings().filter((binding) =>
+      normalizeRoot(binding.root) !== normalized && binding.workspaceId !== workspaceId,
+    );
+    await this.context.globalState.update(BINDINGS_KEY, next);
+  }
+
   private boundRoot(workspaceId: string): string | undefined {
     return this.bindings().find((binding) => binding.workspaceId === workspaceId)?.root;
   }
@@ -427,6 +593,37 @@ function errorMessage(error: unknown): string {
     return error.message;
   }
   return error instanceof Error ? error.message : String(error);
+}
+
+async function synchronizeTreeSelection(
+  store: HerdrSnapshotStore,
+  spaces: SpacesTreeProvider,
+  agents: AgentsTreeProvider,
+  spacesView: vscode.TreeView<SpaceNode | { kind: "message"; label: string; icon: string }>,
+  agentsView: vscode.TreeView<AgentNode | { kind: "message"; label: string; icon: string }>,
+  output: vscode.LogOutputChannel,
+): Promise<void> {
+  // Tree change events are delivered synchronously, while VS Code rebuilds the
+  // visible rows asynchronously. Reveal only after that rebuild can observe the
+  // provider's new node generation.
+  await delay(0);
+  const snapshot = store.snapshot;
+  if (!snapshot) {
+    return;
+  }
+  const selection = activeTreeSelection(snapshot);
+  try {
+    const space = selection.workspaceId && spaces.nodeForWorkspace(selection.workspaceId);
+    if (spacesView.visible && space) {
+      await spacesView.reveal(space, { select: true, focus: false });
+    }
+    const agent = selection.agentPaneId && agents.nodeForPane(selection.agentPaneId);
+    if (agentsView.visible && agent) {
+      await agentsView.reveal(agent, { select: true, focus: false });
+    }
+  } catch (error) {
+    output.debug(`Could not synchronize Herdr tree selection: ${errorMessage(error)}`);
+  }
 }
 
 function delay(milliseconds: number): Promise<void> {

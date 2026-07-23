@@ -53,9 +53,14 @@ export class SpacesTreeProvider implements vscode.TreeDataProvider<SpaceTreeNode
   private readonly changeEmitter = new vscode.EventEmitter<SpaceTreeNode | undefined>();
   readonly onDidChangeTreeData = this.changeEmitter.event;
   private readonly storeSubscription: vscode.Disposable;
+  private nodes: SpaceNode[] = [];
 
   constructor(private readonly store: HerdrSnapshotStore) {
-    this.storeSubscription = store.onDidChange(() => this.changeEmitter.fire(undefined));
+    this.rebuildNodes();
+    this.storeSubscription = store.onDidChange(() => {
+      this.rebuildNodes();
+      this.changeEmitter.fire(undefined);
+    });
   }
 
   getTreeItem(node: SpaceTreeNode): vscode.TreeItem {
@@ -63,7 +68,7 @@ export class SpacesTreeProvider implements vscode.TreeDataProvider<SpaceTreeNode
       return messageItem(node);
     }
     const item = new vscode.TreeItem(node.workspace.label, vscode.TreeItemCollapsibleState.None);
-    item.id = `space:${node.workspace.workspace_id}`;
+    item.id = `space:${node.workspace.workspace_id}:${selectionGeneration(this.store.snapshot)}`;
     item.description = this.store.branches.get(node.workspace.workspace_id);
     item.iconPath = spaceStatusIcon(node.workspace.agent_status);
     item.tooltip = node.root
@@ -82,14 +87,28 @@ export class SpacesTreeProvider implements vscode.TreeDataProvider<SpaceTreeNode
     if (unavailable) {
       return [unavailable];
     }
-    const snapshot = this.store.snapshot!;
-    return [...snapshot.workspaces]
-      .sort((left, right) => left.number - right.number)
-      .map((workspace) => ({
-        kind: "space" as const,
-        workspace,
-        root: inferWorkspaceRoot(snapshot, workspace),
-      }));
+    return this.nodes;
+  }
+
+  getParent(_node: SpaceTreeNode): undefined {
+    return undefined;
+  }
+
+  nodeForWorkspace(workspaceId: string): SpaceNode | undefined {
+    return this.nodes.find((node) => node.workspace.workspace_id === workspaceId);
+  }
+
+  private rebuildNodes(): void {
+    const snapshot = this.store.snapshot;
+    this.nodes = snapshot
+      ? [...snapshot.workspaces]
+        .sort((left, right) => left.number - right.number)
+        .map((workspace) => ({
+          kind: "space" as const,
+          workspace,
+          root: inferWorkspaceRoot(snapshot, workspace),
+        }))
+      : [];
   }
 
   dispose(): void {
@@ -102,9 +121,14 @@ export class AgentsTreeProvider implements vscode.TreeDataProvider<AgentTreeNode
   private readonly changeEmitter = new vscode.EventEmitter<AgentTreeNode | undefined>();
   readonly onDidChangeTreeData = this.changeEmitter.event;
   private readonly storeSubscription: vscode.Disposable;
+  private nodes: AgentNode[] = [];
 
   constructor(private readonly store: HerdrSnapshotStore) {
-    this.storeSubscription = store.onDidChange(() => this.changeEmitter.fire(undefined));
+    this.rebuildNodes();
+    this.storeSubscription = store.onDidChange(() => {
+      this.rebuildNodes();
+      this.changeEmitter.fire(undefined);
+    });
   }
 
   getTreeItem(node: AgentTreeNode): vscode.TreeItem {
@@ -117,7 +141,7 @@ export class AgentsTreeProvider implements vscode.TreeDataProvider<AgentTreeNode
       ? `${node.workspace.label} / ${tab.label}`
       : node.workspace.label;
     const item = new vscode.TreeItem(primaryLabel, vscode.TreeItemCollapsibleState.None);
-    item.id = `agent:${node.agent.terminal_id}`;
+    item.id = `agent:${node.agent.terminal_id}:${selectionGeneration(this.store.snapshot)}`;
     item.description = agentName;
     item.iconPath = agentStatusIcon(node.agent.agent_status);
     const stateLabel = node.agent.state_labels?.[node.agent.agent_status] ?? node.agent.agent_status;
@@ -135,8 +159,20 @@ export class AgentsTreeProvider implements vscode.TreeDataProvider<AgentTreeNode
     if (unavailable) {
       return [unavailable];
     }
-    const snapshot = this.store.snapshot!;
-    return [...snapshot.agents]
+    return this.nodes;
+  }
+
+  getParent(_node: AgentTreeNode): undefined {
+    return undefined;
+  }
+
+  nodeForPane(paneId: string): AgentNode | undefined {
+    return this.nodes.find((node) => node.agent.pane_id === paneId);
+  }
+
+  private rebuildNodes(): void {
+    const snapshot = this.store.snapshot;
+    this.nodes = snapshot ? [...snapshot.agents]
       .sort((left, right) => {
         const leftWorkspace = workspaceNumber(snapshot, left.workspace_id);
         const rightWorkspace = workspaceNumber(snapshot, right.workspace_id);
@@ -148,7 +184,7 @@ export class AgentsTreeProvider implements vscode.TreeDataProvider<AgentTreeNode
         return workspace
           ? [{ kind: "agent", agent, workspace, root: inferWorkspaceRoot(snapshot, workspace) }]
           : [];
-      });
+      }) : [];
   }
 
   dispose(): void {
@@ -160,6 +196,10 @@ export class AgentsTreeProvider implements vscode.TreeDataProvider<AgentTreeNode
 function workspaceNumber(snapshot: HerdrSnapshot, workspaceId: string): number {
   return snapshot.workspaces.find((workspace) => workspace.workspace_id === workspaceId)?.number
     ?? Number.MAX_SAFE_INTEGER;
+}
+
+function selectionGeneration(snapshot: HerdrSnapshot | undefined): string {
+  return snapshot?.focused_pane_id ?? snapshot?.focused_workspace_id ?? "none";
 }
 
 function unavailableNode(

@@ -6,6 +6,6 @@
     "module": "Node16",
     "noEmit": false
   },
-  "include": ["src/**/*.test.ts", "src/model.ts", "src/navigationIntent.ts", "src/herdrClient.ts", "src/types.ts"],
+  "include": ["src/**/*.test.ts", "src/agentConfiguration.ts", "src/model.ts", "src/navigationIntent.ts", "src/herdrClient.ts", "src/types.ts"],
   "exclude": []
 }
