@@ -31,36 +31,36 @@ export class HerdrClient {
   }
 
   async focusAgent(target: string): Promise<void> {
-    await this.runJson(["agent", "focus", target]);
+    await this.runVoid(["agent", "focus", target]);
   }
 
   async focusWorkspace(workspaceId: string): Promise<void> {
-    await this.runJson(["workspace", "focus", workspaceId]);
+    await this.runVoid(["workspace", "focus", workspaceId]);
   }
 
   async setWorkspaceToken(workspaceId: string, source: string, key: string, value: string, ttlMs: number): Promise<void> {
-    await this.runJson([
+    await this.runVoid([
       "workspace", "report-metadata", workspaceId,
       "--source", source, "--token", `${key}=${value}`, "--ttl-ms", String(ttlMs),
     ]);
   }
 
   async clearWorkspaceToken(workspaceId: string, source: string, key: string): Promise<void> {
-    await this.runJson([
+    await this.runVoid([
       "workspace", "report-metadata", workspaceId,
       "--source", source, "--clear-token", key,
     ]);
   }
 
   async setPaneToken(paneId: string, source: string, key: string, value: string, ttlMs: number): Promise<void> {
-    await this.runJson([
+    await this.runVoid([
       "pane", "report-metadata", paneId,
       "--source", source, "--token", `${key}=${value}`, "--ttl-ms", String(ttlMs),
     ]);
   }
 
   async clearPaneToken(paneId: string, source: string, key: string): Promise<void> {
-    await this.runJson([
+    await this.runVoid([
       "pane", "report-metadata", paneId,
       "--source", source, "--clear-token", key,
     ]);
@@ -74,7 +74,7 @@ export class HerdrClient {
   }
 
   async closeWorkspace(workspaceId: string): Promise<void> {
-    await this.runJson(["workspace", "close", workspaceId]);
+    await this.runVoid(["workspace", "close", workspaceId]);
   }
 
   async splitPane(paneId: string, cwd: string): Promise<HerdrPane> {
@@ -85,11 +85,11 @@ export class HerdrClient {
   }
 
   async runPane(paneId: string, command: string): Promise<void> {
-    await this.runJson(["pane", "run", paneId, command]);
+    await this.runVoid(["pane", "run", paneId, command]);
   }
 
   async closePane(paneId: string): Promise<void> {
-    await this.runJson(["pane", "close", paneId]);
+    await this.runVoid(["pane", "close", paneId]);
   }
 
   terminalArgs(): string[] {
@@ -127,6 +127,25 @@ export class HerdrClient {
       throw new HerdrCommandError(response.error?.message ?? "herdr returned no result", stderr, exitCode);
     }
     return response.result;
+  }
+
+  private async runVoid(args: string[]): Promise<void> {
+    const { stdout, stderr, exitCode } = await run(this.options.executable, [...this.sessionArgs(), ...args]);
+    if (exitCode !== 0) {
+      throw new HerdrCommandError(stderr.trim() || `herdr exited with code ${exitCode}`, stderr, exitCode);
+    }
+    if (stdout.trim() === "") {
+      return;
+    }
+    let response: HerdrResponse<unknown>;
+    try {
+      response = JSON.parse(stdout) as HerdrResponse<unknown>;
+    } catch (error) {
+      throw new HerdrCommandError(`herdr returned invalid JSON: ${String(error)}`, stderr, exitCode);
+    }
+    if (response.error) {
+      throw new HerdrCommandError(response.error.message, stderr, exitCode);
+    }
   }
 
   private sessionArgs(): string[] {
