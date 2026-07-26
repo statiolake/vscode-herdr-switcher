@@ -1,19 +1,20 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { configuredAgents, shellCommand, type ConfiguredAgent } from "./agentConfiguration";
-import { agentDisplayName, agentStatusPresentation } from "./agentPresentation";
+import { AgentStatusBar } from "./agentStatusBar";
 import { GitBranchProvider } from "./gitBranchProvider";
 import { HerdrClient, HerdrCommandError } from "./herdrClient";
 import {
   activeAgentForWorkspace,
   activeTreeSelection,
+  agentsForWorkspace,
   findWorkspaceForRoot,
   nonShellForegroundProcesses,
   normalizeRoot,
   type SpaceBinding,
 } from "./model";
 import { ConsumedNavigationIntents, HerdrNavigationIntentStore } from "./navigationIntent";
-import { formatOutputPreview } from "./outputPreview";
+import { formatOutputPreview, type AgentOutputPreview } from "./outputPreview";
 import {
   AgentsTreeProvider,
   HerdrSnapshotStore,
@@ -26,12 +27,6 @@ import type { HerdrSnapshot } from "./types";
 const BINDINGS_KEY = "herdr.spaceBindings.v1";
 const TERMINAL_NAME = "Herdr";
 
-type AgentOutputPreview =
-  | { kind: "loading" }
-  | { kind: "output"; text: string }
-  | { kind: "empty" }
-  | { kind: "error" };
-
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel("Herdr", { log: true });
   const store = new HerdrSnapshotStore();
@@ -40,47 +35,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const spacesView = vscode.window.createTreeView("herdr.spaces", { treeDataProvider: spaces });
   const agentsView = vscode.window.createTreeView("herdr.agents", { treeDataProvider: agents });
   const controller = new HerdrController(context, store, output);
-  const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-  let statusGeneration = 0;
-  let statusPaneId: string | undefined;
-  let statusPreview: AgentOutputPreview = { kind: "loading" };
-  let statusRenderKey: string | undefined;
-  const renderStatus = (agent: ReturnType<HerdrController["activeAgent"]>) => {
-    const renderKey = agent
-      ? JSON.stringify([agent.pane_id, agent.agent_status, agentDisplayName(agent), statusPreview])
-      : "hidden";
-    if (renderKey === statusRenderKey) {
-      return;
-    }
-    statusRenderKey = renderKey;
-    updateAgentStatusBar(status, agent, statusPreview);
-  };
-  const updateStatus = () => {
-    const generation = ++statusGeneration;
-    const agent = controller.activeAgent();
-    if (!agent) {
-      statusPaneId = undefined;
-      statusPreview = { kind: "loading" };
-      renderStatus(undefined);
-      return;
-    }
-    if (statusPaneId !== agent.pane_id) {
-      statusPaneId = agent.pane_id;
-      statusPreview = { kind: "loading" };
-    }
-    renderStatus(agent);
-    void controller.agentOutputPreview(agent.pane_id).then((preview) => {
-      const current = controller.activeAgent();
-      if (
-        generation === statusGeneration
-        && current?.pane_id === agent.pane_id
-        && JSON.stringify(preview) !== JSON.stringify(statusPreview)
-      ) {
-        statusPreview = preview;
-        renderStatus(current);
-      }
-    });
-  };
+  const status = new AgentStatusBar("herdr.openAgentByPane");
+  const updateStatus = () =>
+    status.update(controller.currentAgents(), (paneId) => controller.agentOutputPreview(paneId));
   const syncSelection = () => synchronizeTreeSelection(store, spaces, agents, spacesView, agentsView, output);
   context.subscriptions.push(
     output,
@@ -98,6 +55,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("herdr.openSpace", (node: SpaceNode) => controller.openSpace(node)),
     vscode.commands.registerCommand("herdr.openAgent", (node: AgentNode) => controller.openAgent(node)),
     vscode.commands.registerCommand("herdr.openActiveAgent", () => controller.openActiveAgent()),
+    vscode.commands.registerCommand("herdr.openAgentByPane", (paneId: string) => controller.openAgentByPane(paneId)),
     vscode.commands.registerCommand("herdr.attachSpace", (node: SpaceNode) => controller.attachSpace(node)),
     vscode.commands.registerCommand("herdr.spaceActions", (node: SpaceNode) => controller.showSpaceActions(node)),
     vscode.commands.registerCommand("herdr.closeSpace", (node: SpaceNode) => controller.closeSpace(node)),
@@ -156,6 +114,13 @@ class HerdrController implements vscode.Disposable {
     return association && this.snapshot
       ? activeAgentForWorkspace(this.snapshot, association.workspace.workspace_id)
       : undefined;
+  }
+
+  currentAgents() {
+    const association = this.currentWorkspaceAssociation();
+    return association && this.snapshot
+      ? agentsForWorkspace(this.snapshot, association.workspace.workspace_id)
+      : [];
   }
 
   agentOutputPreview(paneId: string): Promise<AgentOutputPreview> {
@@ -301,6 +266,17 @@ class HerdrController implements vscode.Disposable {
     }
     try {
       await this.focusAgent(agent.pane_id);
+    } catch (error) {
+      void vscode.window.showErrorMessage(`Could not focus Herdr agent: ${errorMessage(error)}`);
+    }
+  }
+
+  async openAgentByPane(paneId: string): Promise<void> {
+    if (!this.currentAgents().some((agent) => agent.pane_id === paneId)) {
+      return;
+    }
+    try {
+      await this.focusAgent(paneId);
     } catch (error) {
       void vscode.window.showErrorMessage(`Could not focus Herdr agent: ${errorMessage(error)}`);
     }
@@ -785,37 +761,6 @@ function errorMessage(error: unknown): string {
     return error.message;
   }
   return error instanceof Error ? error.message : String(error);
-}
-
-function updateAgentStatusBar(
-  item: vscode.StatusBarItem,
-  agent: ReturnType<HerdrController["activeAgent"]>,
-  outputPreview: AgentOutputPreview,
-): void {
-  if (!agent) {
-    item.hide();
-    return;
-  }
-  const presentation = agentStatusPresentation(agent.agent_status);
-  const name = agentDisplayName(agent);
-  item.text = `$(${presentation.icon}) ${name}`;
-  item.color = presentation.color ? new vscode.ThemeColor(presentation.color) : undefined;
-  if (outputPreview.kind === "output") {
-    const tooltip = new vscode.MarkdownString();
-    tooltip.appendText(name);
-    tooltip.appendMarkdown("\n\n");
-    tooltip.appendCodeblock(outputPreview.text, "text");
-    item.tooltip = tooltip;
-  } else {
-    const detail = outputPreview.kind === "loading"
-      ? "reading terminal…"
-      : outputPreview.kind === "empty"
-        ? "terminal has no output"
-        : "failed to read terminal";
-    item.tooltip = `${name} - ${detail}`;
-  }
-  item.command = "herdr.openActiveAgent";
-  item.show();
 }
 
 async function synchronizeTreeSelection(
