@@ -1,53 +1,42 @@
 # Herdr Switcher
 
-Native VS Code navigation for [Herdr](https://github.com/ogulcancelik/herdr), the terminal workspace manager for AI coding agents.
+Bring [Herdr](https://github.com/ogulcancelik/herdr) spaces and AI coding agents into VS Code. See every project at a glance, switch between their VS Code windows, and jump directly to an active agent.
 
-## What it does
+## Features
 
-- Creates or associates a Herdr space when a folder opens in VS Code.
-- Shows independent Spaces and Agents lists in one Activity Bar container, matching Herdr's sidebar structure.
-- Opens a space's VS Code window, reveals the Herdr sidebar, and focuses that Herdr workspace without opening a terminal.
-- Opens another workspace's VS Code window when you select one of its agents, then reveals Herdr, opens its terminal in the editor area, and focuses that agent.
-- In the current workspace, focuses the selected Herdr agent and opens or reuses an integrated Herdr terminal.
-- Closes a Herdr space from its inline trash button and warns before terminating non-shell foreground processes.
-- Starts configured agents from the Agents header, with a one-click default agent button.
-- Starts a headless Herdr server when folder association needs one and no server is running.
+- Separate **Spaces** and **Agents** lists in the Herdr Activity Bar.
+- Live agent status, Git branch names, and the active agent in the status bar.
+- Click a Space to switch to its VS Code window without opening a terminal.
+- Click an Agent to switch windows, open a pinned Herdr terminal, and focus its pane.
+- Use a Space's terminal button to attach from that Space's VS Code window.
+- Start Claude Code, Codex, or custom agents in dedicated Herdr tabs.
+- Close Spaces from the `…` menu, with a warning when non-shell processes are running.
 
-Herdr remains the source of truth for spaces, panes, agents, and semantic agent states. The extension stores only the association between a VS Code folder and a Herdr workspace ID. Existing spaces are initially associated by exact worktree checkout path or root-pane cwd.
+## Requirements
 
-Each extension instance checks on every snapshot poll that its VS Code folder still has a corresponding Herdr space, recreating and rebinding it when necessary.
+- VS Code 1.96 or later
+- Herdr 0.7.5 or later, available as `herdr` on `PATH`
 
-Cross-window navigation uses short-lived Herdr workspace and pane metadata tokens as delivery intents. The destination window consumes and clears its intent after it has focused the requested space or agent. This requires Herdr 0.7.5 or later.
+If Herdr is installed elsewhere, set `herdr.executable` to its path.
 
-## Development
+## Getting started
 
-```sh
-npm install
-npm test
-npm run build
-```
+1. Open a folder in VS Code. The extension creates or associates its Herdr Space.
+2. Open the Herdr icon in the Activity Bar to see all Spaces and Agents.
+3. Select a Space or Agent to navigate. Use the Agents header buttons to choose an agent or start the default one.
 
-Press `F5` in VS Code to launch an Extension Development Host.
-
-The default `Run Herdr Extension` debug configuration starts esbuild in watch
-mode and launches an Extension Development Host with source maps enabled. Set
-breakpoints directly in `src/*.ts`; after an edit, restart the debug session to
-load the rebuilt extension. Use `Run Herdr Extension (build once)` when a
-persistent watcher is not wanted.
-
-VS Code tasks are also available for build (`Cmd+Shift+B`), watch, type-check,
-and test.
+Herdr remains the source of truth. Cross-window actions are delivered through short-lived Herdr metadata intents, so each VS Code window can handle navigation for its own Space.
 
 ## Configuration
 
-- `herdr.executable`: Herdr executable path (default: `herdr`)
+- `herdr.executable`: Herdr executable path
 - `herdr.session`: optional named Herdr session
-- `herdr.refreshInterval`: sidebar snapshot interval in milliseconds (default: `1000`)
-- `herdr.createSpaceOnOpen`: create/associate spaces on folder open (default: `true`)
-- `herdr.agents`: agents shown in the Add Agent picker
-- `herdr.defaultAgent`: agent name launched by the `+` button
+- `herdr.refreshInterval`: live update interval in milliseconds
+- `herdr.createSpaceOnOpen`: automatically create or associate Spaces
+- `herdr.agents`: agents available from the Add Agent picker
+- `herdr.defaultAgent`: agent launched by the `+` button
 
-Example:
+All settings are user-level settings. The default agents are Claude Code and Codex:
 
 ```json
 {
@@ -58,3 +47,13 @@ Example:
   "herdr.defaultAgent": "Claude Code"
 }
 ```
+
+## Development
+
+```sh
+npm install
+npm test
+npm run build
+```
+
+Press `F5` to launch the included Extension Development Host configuration.
