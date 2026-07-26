@@ -5,7 +5,7 @@ const SOURCE = "vscode-herdr-switcher";
 const TOKEN = "vscode-navigation-intent";
 const ATTACH_TOKEN = "vscode-attach-intent";
 const CLOSE_TOKEN = "vscode-close-intent";
-const TTL_MS = 60_000;
+export const NAVIGATION_INTENT_TTL_MS = 60_000;
 
 export type NavigationIntent =
   | { requestId: string; workspaceId: string; kind: "workspace" }
@@ -17,19 +17,19 @@ export class HerdrNavigationIntentStore {
   constructor(private readonly client: HerdrClient) {}
 
   async publishWorkspace(workspaceId: string): Promise<void> {
-    await this.client.setWorkspaceToken(workspaceId, SOURCE, TOKEN, requestId(), TTL_MS);
+    await this.client.setWorkspaceToken(workspaceId, SOURCE, TOKEN, requestId(), NAVIGATION_INTENT_TTL_MS);
   }
 
   async publishAgent(paneId: string): Promise<void> {
-    await this.client.setPaneToken(paneId, SOURCE, TOKEN, requestId(), TTL_MS);
+    await this.client.setPaneToken(paneId, SOURCE, TOKEN, requestId(), NAVIGATION_INTENT_TTL_MS);
   }
 
   async publishAttach(workspaceId: string): Promise<void> {
-    await this.client.setWorkspaceToken(workspaceId, SOURCE, ATTACH_TOKEN, requestId(), TTL_MS);
+    await this.client.setWorkspaceToken(workspaceId, SOURCE, ATTACH_TOKEN, requestId(), NAVIGATION_INTENT_TTL_MS);
   }
 
   async publishClose(workspaceId: string): Promise<void> {
-    await this.client.setWorkspaceToken(workspaceId, SOURCE, CLOSE_TOKEN, requestId(), TTL_MS);
+    await this.client.setWorkspaceToken(workspaceId, SOURCE, CLOSE_TOKEN, requestId(), NAVIGATION_INTENT_TTL_MS);
   }
 
   find(snapshot: HerdrSnapshot, workspaceId: string): NavigationIntent | undefined {
@@ -46,6 +46,28 @@ export class HerdrNavigationIntentStore {
       SOURCE,
       intent.kind === "close" ? CLOSE_TOKEN : intent.kind === "attach" ? ATTACH_TOKEN : TOKEN,
     );
+  }
+}
+
+export class ConsumedNavigationIntents {
+  private readonly expirations = new Map<string, number>();
+
+  has(requestId: string, now = Date.now()): boolean {
+    this.prune(now);
+    return (this.expirations.get(requestId) ?? 0) > now;
+  }
+
+  add(requestId: string, now = Date.now()): void {
+    this.prune(now);
+    this.expirations.set(requestId, now + NAVIGATION_INTENT_TTL_MS);
+  }
+
+  private prune(now: number): void {
+    for (const [requestId, expiresAt] of this.expirations) {
+      if (expiresAt <= now) {
+        this.expirations.delete(requestId);
+      }
+    }
   }
 }
 

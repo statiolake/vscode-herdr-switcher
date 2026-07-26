@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { findNavigationIntent } from "./navigationIntent";
+import { ConsumedNavigationIntents, findNavigationIntent, NAVIGATION_INTENT_TTL_MS } from "./navigationIntent";
 import type { HerdrSnapshot } from "./types";
 
 function snapshot(): HerdrSnapshot {
@@ -65,4 +65,11 @@ test("a close intent takes precedence over focus intents", () => {
   assert.deepEqual(findNavigationIntent(value, "w1"), {
     requestId: "close-request", workspaceId: "w1", kind: "close",
   });
+});
+
+test("consumed intent receipts suppress stale snapshots until their TTL expires", () => {
+  const consumed = new ConsumedNavigationIntents();
+  consumed.add("request-1", 1_000);
+  assert.equal(consumed.has("request-1", 1_000 + NAVIGATION_INTENT_TTL_MS - 1), true);
+  assert.equal(consumed.has("request-1", 1_000 + NAVIGATION_INTENT_TTL_MS), false);
 });

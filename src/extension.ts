@@ -12,7 +12,7 @@ import {
   normalizeRoot,
   type SpaceBinding,
 } from "./model";
-import { HerdrNavigationIntentStore } from "./navigationIntent";
+import { ConsumedNavigationIntents, HerdrNavigationIntentStore } from "./navigationIntent";
 import {
   AgentsTreeProvider,
   HerdrSnapshotStore,
@@ -80,11 +80,12 @@ class HerdrController implements vscode.Disposable {
   private navigationIntents = new HerdrNavigationIntentStore(this.client);
   private snapshot: HerdrSnapshot | undefined;
   private timer: NodeJS.Timeout | undefined;
-  private refreshing = false;
+  private refreshPromise: Promise<void> | undefined;
+  private navigationIntentPromise: Promise<boolean> | undefined;
   private disposed = false;
   private terminal: vscode.Terminal | undefined;
   private serverStartAttempted = false;
-  private handlingNavigationIntent: string | undefined;
+  private readonly consumedNavigationIntents = new ConsumedNavigationIntents();
   private readonly reportedSpaceCreationErrors = new Set<string>();
   private readonly closingRoots = new Set<string>();
   private readonly gitBranches = new GitBranchProvider();
@@ -128,10 +129,25 @@ class HerdrController implements vscode.Disposable {
   }
 
   async refresh(showError: boolean): Promise<void> {
-    if (this.refreshing || this.disposed) {
+    if (this.disposed) {
       return;
     }
-    this.refreshing = true;
+    if (this.refreshPromise) {
+      await this.refreshPromise;
+      return;
+    }
+    const refresh = this.performRefresh(showError);
+    this.refreshPromise = refresh;
+    try {
+      await refresh;
+    } finally {
+      if (this.refreshPromise === refresh) {
+        this.refreshPromise = undefined;
+      }
+    }
+  }
+
+  private async performRefresh(showError: boolean): Promise<void> {
     try {
       const snapshot = await this.client.snapshot();
       const branches = await this.gitBranches.forSnapshot(snapshot);
@@ -146,8 +162,6 @@ class HerdrController implements vscode.Disposable {
       if (showError) {
         void vscode.window.showErrorMessage(`Herdr: ${message}`);
       }
-    } finally {
-      this.refreshing = false;
     }
   }
 
@@ -371,6 +385,21 @@ class HerdrController implements vscode.Disposable {
   }
 
   private async consumeNavigationIntent(): Promise<boolean> {
+    if (this.navigationIntentPromise) {
+      return this.navigationIntentPromise;
+    }
+    const consumption = this.consumeNavigationIntentOnce();
+    this.navigationIntentPromise = consumption;
+    try {
+      return await consumption;
+    } finally {
+      if (this.navigationIntentPromise === consumption) {
+        this.navigationIntentPromise = undefined;
+      }
+    }
+  }
+
+  private async consumeNavigationIntentOnce(): Promise<boolean> {
     if (!this.snapshot) {
       return false;
     }
@@ -385,10 +414,9 @@ class HerdrController implements vscode.Disposable {
     if (intent.kind !== "close" && !vscode.window.state.focused) {
       return false;
     }
-    if (this.handlingNavigationIntent === intent.requestId) {
+    if (this.consumedNavigationIntents.has(intent.requestId)) {
       return true;
     }
-    this.handlingNavigationIntent = intent.requestId;
     try {
       if (intent.kind === "close") {
         const association = this.currentWorkspaceAssociation();
@@ -396,9 +424,12 @@ class HerdrController implements vscode.Disposable {
           return false;
         }
         await this.navigationIntents.acknowledge(intent);
+        this.consumedNavigationIntents.add(intent.requestId);
         await this.closeCurrentWindowSpace(intent.workspaceId, association.root);
         return true;
       }
+      await this.navigationIntents.acknowledge(intent);
+      this.consumedNavigationIntents.add(intent.requestId);
       await vscode.commands.executeCommand("workbench.view.extension.herdr");
       await vscode.commands.executeCommand(intent.kind === "agent" ? "herdr.agents.focus" : "herdr.spaces.focus");
       if (intent.kind === "agent" || intent.kind === "attach") {
@@ -411,14 +442,11 @@ class HerdrController implements vscode.Disposable {
       } else {
         await this.retryFocus(() => this.client.focusWorkspace(intent.workspaceId));
       }
-      await this.navigationIntents.acknowledge(intent);
       await this.refresh(false);
       return true;
     } catch (error) {
       this.output.warn(`Could not consume navigation intent ${intent.requestId}: ${errorMessage(error)}`);
       return false;
-    } finally {
-      this.handlingNavigationIntent = undefined;
     }
   }
 
