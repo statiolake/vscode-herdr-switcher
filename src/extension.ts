@@ -13,6 +13,7 @@ import {
   type SpaceBinding,
 } from "./model";
 import { ConsumedNavigationIntents, HerdrNavigationIntentStore } from "./navigationIntent";
+import { formatOutputPreview } from "./outputPreview";
 import {
   AgentsTreeProvider,
   HerdrSnapshotStore,
@@ -25,6 +26,12 @@ import type { HerdrSnapshot } from "./types";
 const BINDINGS_KEY = "herdr.spaceBindings.v1";
 const TERMINAL_NAME = "Herdr";
 
+type AgentOutputPreview =
+  | { kind: "loading" }
+  | { kind: "output"; text: string }
+  | { kind: "empty" }
+  | { kind: "error" };
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel("Herdr", { log: true });
   const store = new HerdrSnapshotStore();
@@ -34,7 +41,46 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const agentsView = vscode.window.createTreeView("herdr.agents", { treeDataProvider: agents });
   const controller = new HerdrController(context, store, output);
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-  const updateStatus = () => updateAgentStatusBar(status, controller.activeAgent());
+  let statusGeneration = 0;
+  let statusPaneId: string | undefined;
+  let statusPreview: AgentOutputPreview = { kind: "loading" };
+  let statusRenderKey: string | undefined;
+  const renderStatus = (agent: ReturnType<HerdrController["activeAgent"]>) => {
+    const renderKey = agent
+      ? JSON.stringify([agent.pane_id, agent.agent_status, agentDisplayName(agent), statusPreview])
+      : "hidden";
+    if (renderKey === statusRenderKey) {
+      return;
+    }
+    statusRenderKey = renderKey;
+    updateAgentStatusBar(status, agent, statusPreview);
+  };
+  const updateStatus = () => {
+    const generation = ++statusGeneration;
+    const agent = controller.activeAgent();
+    if (!agent) {
+      statusPaneId = undefined;
+      statusPreview = { kind: "loading" };
+      renderStatus(undefined);
+      return;
+    }
+    if (statusPaneId !== agent.pane_id) {
+      statusPaneId = agent.pane_id;
+      statusPreview = { kind: "loading" };
+    }
+    renderStatus(agent);
+    void controller.agentOutputPreview(agent.pane_id).then((preview) => {
+      const current = controller.activeAgent();
+      if (
+        generation === statusGeneration
+        && current?.pane_id === agent.pane_id
+        && JSON.stringify(preview) !== JSON.stringify(statusPreview)
+      ) {
+        statusPreview = preview;
+        renderStatus(current);
+      }
+    });
+  };
   const syncSelection = () => synchronizeTreeSelection(store, spaces, agents, spacesView, agentsView, output);
   context.subscriptions.push(
     output,
@@ -86,6 +132,8 @@ class HerdrController implements vscode.Disposable {
   private terminal: vscode.Terminal | undefined;
   private serverStartAttempted = false;
   private readonly consumedNavigationIntents = new ConsumedNavigationIntents();
+  private readonly agentOutputRequests = new Map<string, Promise<AgentOutputPreview>>();
+  private readonly agentOutputErrors = new Map<string, string>();
   private readonly reportedSpaceCreationErrors = new Set<string>();
   private readonly closingRoots = new Set<string>();
   private readonly gitBranches = new GitBranchProvider();
@@ -108,6 +156,34 @@ class HerdrController implements vscode.Disposable {
     return association && this.snapshot
       ? activeAgentForWorkspace(this.snapshot, association.workspace.workspace_id)
       : undefined;
+  }
+
+  agentOutputPreview(paneId: string): Promise<AgentOutputPreview> {
+    const current = this.agentOutputRequests.get(paneId);
+    if (current) {
+      return current;
+    }
+    const request = this.client.readPaneOutput(paneId, 12)
+      .then((text) => {
+        this.agentOutputErrors.delete(paneId);
+        const preview = formatOutputPreview(text);
+        return preview ? { kind: "output" as const, text: preview } : { kind: "empty" as const };
+      })
+      .catch((error) => {
+        const message = errorMessage(error);
+        if (this.agentOutputErrors.get(paneId) !== message) {
+          this.agentOutputErrors.set(paneId, message);
+          this.output.debug(`Could not read output preview for ${paneId}: ${message}`);
+        }
+        return { kind: "error" as const };
+      })
+      .finally(() => {
+        if (this.agentOutputRequests.get(paneId) === request) {
+          this.agentOutputRequests.delete(paneId);
+        }
+      });
+    this.agentOutputRequests.set(paneId, request);
+    return request;
   }
 
   dispose(): void {
@@ -511,6 +587,12 @@ class HerdrController implements vscode.Disposable {
   }
 
   private async startConfiguredAgent(agent: ConfiguredAgent): Promise<void> {
+    if ((vscode.workspace.workspaceFolders?.length ?? 0) === 0) {
+      void vscode.window.showErrorMessage(
+        "Could not start Herdr agent: No folder is open in this VS Code window. Open a folder first.",
+      );
+      return;
+    }
     try {
       await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: `Starting ${agent.name} in Herdr…` },
@@ -705,7 +787,11 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function updateAgentStatusBar(item: vscode.StatusBarItem, agent: ReturnType<HerdrController["activeAgent"]>): void {
+function updateAgentStatusBar(
+  item: vscode.StatusBarItem,
+  agent: ReturnType<HerdrController["activeAgent"]>,
+  outputPreview: AgentOutputPreview,
+): void {
   if (!agent) {
     item.hide();
     return;
@@ -714,7 +800,20 @@ function updateAgentStatusBar(item: vscode.StatusBarItem, agent: ReturnType<Herd
   const name = agentDisplayName(agent);
   item.text = `$(${presentation.icon}) ${name}`;
   item.color = presentation.color ? new vscode.ThemeColor(presentation.color) : undefined;
-  item.tooltip = `Herdr: ${name} · ${agent.agent_status}`;
+  if (outputPreview.kind === "output") {
+    const tooltip = new vscode.MarkdownString();
+    tooltip.appendText(name);
+    tooltip.appendMarkdown("\n\n");
+    tooltip.appendCodeblock(outputPreview.text, "text");
+    item.tooltip = tooltip;
+  } else {
+    const detail = outputPreview.kind === "loading"
+      ? "reading terminal…"
+      : outputPreview.kind === "empty"
+        ? "terminal has no output"
+        : "failed to read terminal";
+    item.tooltip = `${name} - ${detail}`;
+  }
   item.command = "herdr.openActiveAgent";
   item.show();
 }
