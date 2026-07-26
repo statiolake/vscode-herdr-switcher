@@ -51,6 +51,15 @@ export function agentsForWorkspace(snapshot: HerdrSnapshot, workspaceId: string)
     .sort((left, right) => left.pane_id.localeCompare(right.pane_id, undefined, { numeric: true }));
 }
 
+export function activeAgentForWorkspace(snapshot: HerdrSnapshot, workspaceId: string): HerdrAgent | undefined {
+  if (!snapshot.focused_pane_id) {
+    return undefined;
+  }
+  return snapshot.agents.find((agent) =>
+    agent.workspace_id === workspaceId && agent.pane_id === snapshot.focused_pane_id,
+  );
+}
+
 export interface ActiveTreeSelection {
   workspaceId?: string;
   agentPaneId?: string;

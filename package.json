@@ -45,6 +45,10 @@
         "icon": "$(person)"
       },
       {
+        "command": "herdr.openActiveAgent",
+        "title": "Herdr: Open Active Agent"
+      },
+      {
         "command": "herdr.attachSpace",
         "title": "Herdr: Attach to Space",
         "icon": "$(terminal)"

@@ -1,9 +1,17 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { configuredAgents, shellCommand, type ConfiguredAgent } from "./agentConfiguration";
+import { agentDisplayName, agentStatusPresentation } from "./agentPresentation";
 import { GitBranchProvider } from "./gitBranchProvider";
 import { HerdrClient, HerdrCommandError } from "./herdrClient";
-import { activeTreeSelection, findWorkspaceForRoot, nonShellForegroundProcesses, normalizeRoot, type SpaceBinding } from "./model";
+import {
+  activeAgentForWorkspace,
+  activeTreeSelection,
+  findWorkspaceForRoot,
+  nonShellForegroundProcesses,
+  normalizeRoot,
+  type SpaceBinding,
+} from "./model";
 import { HerdrNavigationIntentStore } from "./navigationIntent";
 import {
   AgentsTreeProvider,
@@ -25,6 +33,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const spacesView = vscode.window.createTreeView("herdr.spaces", { treeDataProvider: spaces });
   const agentsView = vscode.window.createTreeView("herdr.agents", { treeDataProvider: agents });
   const controller = new HerdrController(context, store, output);
+  const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+  const updateStatus = () => updateAgentStatusBar(status, controller.activeAgent());
   const syncSelection = () => synchronizeTreeSelection(store, spaces, agents, spacesView, agentsView, output);
   context.subscriptions.push(
     output,
@@ -33,12 +43,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     agents,
     spacesView,
     agentsView,
+    status,
     store.onDidChange(() => { void syncSelection(); }),
+    store.onDidChange(updateStatus),
     spacesView.onDidChangeVisibility(() => { void syncSelection(); }),
     agentsView.onDidChangeVisibility(() => { void syncSelection(); }),
     vscode.commands.registerCommand("herdr.refresh", () => controller.refresh(true)),
     vscode.commands.registerCommand("herdr.openSpace", (node: SpaceNode) => controller.openSpace(node)),
     vscode.commands.registerCommand("herdr.openAgent", (node: AgentNode) => controller.openAgent(node)),
+    vscode.commands.registerCommand("herdr.openActiveAgent", () => controller.openActiveAgent()),
     vscode.commands.registerCommand("herdr.attachSpace", (node: SpaceNode) => controller.attachSpace(node)),
     vscode.commands.registerCommand("herdr.spaceActions", (node: SpaceNode) => controller.showSpaceActions(node)),
     vscode.commands.registerCommand("herdr.closeSpace", (node: SpaceNode) => controller.closeSpace(node)),
@@ -87,6 +100,13 @@ class HerdrController implements vscode.Disposable {
     await this.reconcileFolders();
     await this.handleWindowActivated();
     this.schedule();
+  }
+
+  activeAgent() {
+    const association = this.currentWorkspaceAssociation();
+    return association && this.snapshot
+      ? activeAgentForWorkspace(this.snapshot, association.workspace.workspace_id)
+      : undefined;
   }
 
   dispose(): void {
@@ -178,12 +198,28 @@ class HerdrController implements vscode.Disposable {
       return;
     }
     try {
-      await this.prepareTerminal();
-      await this.retryFocus(() => this.client.focusAgent(node.agent.pane_id));
-      await this.refresh(false);
+      await this.focusAgent(node.agent.pane_id);
     } catch (error) {
       void vscode.window.showErrorMessage(`Could not focus Herdr agent: ${errorMessage(error)}`);
     }
+  }
+
+  async openActiveAgent(): Promise<void> {
+    const agent = this.activeAgent();
+    if (!agent) {
+      return;
+    }
+    try {
+      await this.focusAgent(agent.pane_id);
+    } catch (error) {
+      void vscode.window.showErrorMessage(`Could not focus Herdr agent: ${errorMessage(error)}`);
+    }
+  }
+
+  private async focusAgent(paneId: string): Promise<void> {
+    await this.prepareTerminal();
+    await this.retryFocus(() => this.client.focusAgent(paneId));
+    await this.refresh(false);
   }
 
   async attachSpace(node: SpaceNode): Promise<void> {
@@ -639,6 +675,20 @@ function errorMessage(error: unknown): string {
     return error.message;
   }
   return error instanceof Error ? error.message : String(error);
+}
+
+function updateAgentStatusBar(item: vscode.StatusBarItem, agent: ReturnType<HerdrController["activeAgent"]>): void {
+  if (!agent) {
+    item.hide();
+    return;
+  }
+  const presentation = agentStatusPresentation(agent.agent_status);
+  const name = agentDisplayName(agent);
+  item.text = `$(${presentation.icon}) ${name}`;
+  item.color = presentation.color ? new vscode.ThemeColor(presentation.color) : undefined;
+  item.tooltip = `Herdr: ${name} · ${agent.agent_status}`;
+  item.command = "herdr.openActiveAgent";
+  item.show();
 }
 
 async function synchronizeTreeSelection(

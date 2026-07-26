@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { agentDisplayName, agentStatusPresentation } from "./agentPresentation";
 import { inferWorkspaceRoot } from "./model";
 import type { AgentStatus, HerdrAgent, HerdrSnapshot, HerdrWorkspace } from "./types";
 
@@ -135,7 +136,7 @@ export class AgentsTreeProvider implements vscode.TreeDataProvider<AgentTreeNode
     if (node.kind === "message") {
       return messageItem(node);
     }
-    const agentName = node.agent.name ?? node.agent.display_agent ?? node.agent.agent ?? node.agent.title ?? node.agent.pane_id;
+    const agentName = agentDisplayName(node.agent);
     const tab = this.store.snapshot?.tabs.find((candidate) => candidate.tab_id === node.agent.tab_id);
     const primaryLabel = tab && (tab.label !== "1" || node.workspace.tab_count > 1)
       ? `${node.workspace.label} / ${tab.label}`
@@ -224,13 +225,11 @@ function messageItem(node: MessageNode): vscode.TreeItem {
 }
 
 function agentStatusIcon(status: AgentStatus): vscode.ThemeIcon {
-  switch (status) {
-    case "blocked": return new vscode.ThemeIcon("circle-filled", new vscode.ThemeColor("testing.iconFailed"));
-    case "working": return new vscode.ThemeIcon("loading~spin", new vscode.ThemeColor("charts.yellow"));
-    case "done": return new vscode.ThemeIcon("circle-filled", new vscode.ThemeColor("charts.blue"));
-    case "idle": return new vscode.ThemeIcon("check", new vscode.ThemeColor("testing.iconPassed"));
-    case "unknown": return new vscode.ThemeIcon("circle-outline");
-  }
+  const presentation = agentStatusPresentation(status);
+  return new vscode.ThemeIcon(
+    presentation.icon,
+    presentation.color ? new vscode.ThemeColor(presentation.color) : undefined,
+  );
 }
 
 function spaceStatusIcon(status: AgentStatus): vscode.ThemeIcon {
