@@ -6,6 +6,7 @@ Bring [Herdr](https://github.com/ogulcancelik/herdr) spaces and AI coding agents
 
 - Separate **Spaces** and **Agents** lists in the Herdr Activity Bar.
 - Live agent status, Git branch names, and the active agent in the status bar.
+- An overall Herdr status item with links to every agent across all Spaces.
 - Click a Space to switch to its VS Code window without opening a terminal.
 - Click an Agent to switch windows, open a pinned Herdr terminal, and focus its pane.
 - Use a Space's terminal button to attach from that Space's VS Code window.

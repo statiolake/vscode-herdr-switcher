@@ -5,6 +5,8 @@ export interface AgentStatusPresentation {
   color?: string;
 }
 
+export type OverallAgentStatus = "attention" | "working" | "idle";
+
 export function agentDisplayName(agent: HerdrAgent): string {
   return agent.name ?? agent.display_agent ?? agent.agent ?? agent.title ?? agent.pane_id;
 }
@@ -17,4 +19,14 @@ export function agentStatusPresentation(status: AgentStatus): AgentStatusPresent
     case "idle": return { icon: "check", color: "testing.iconPassed" };
     case "unknown": return { icon: "circle-outline" };
   }
+}
+
+export function overallAgentStatus(statuses: readonly AgentStatus[]): OverallAgentStatus {
+  if (statuses.includes("done")) {
+    return "attention";
+  }
+  if (statuses.includes("working")) {
+    return "working";
+  }
+  return "idle";
 }

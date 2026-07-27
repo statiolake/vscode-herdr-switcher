@@ -11,12 +11,14 @@ import {
   activeTreeSelection,
   agentsForWorkspace,
   findWorkspaceForRoot,
+  inferWorkspaceRoot,
   nonShellForegroundProcesses,
   normalizeRoot,
   type SpaceBinding,
 } from "./model";
 import { ConsumedNavigationIntents, HerdrNavigationIntentStore } from "./navigationIntent";
 import { formatOutputPreview, type AgentOutputPreview } from "./outputPreview";
+import { OverallStatusBar } from "./overallStatusBar";
 import {
   AgentsTreeProvider,
   HerdrSnapshotStore,
@@ -45,8 +47,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const agentsView = vscode.window.createTreeView("herdr.agents", { treeDataProvider: agents });
   const controller = new HerdrController(context, store, output);
   const status = new AgentStatusBar("herdr.openAgentByPane");
-  const updateStatus = () =>
+  const overallStatus = new OverallStatusBar();
+  const updateStatus = () => {
     status.update(controller.currentAgents(), (paneId) => controller.agentOutputPreview(paneId));
+    overallStatus.update(store.snapshot);
+  };
   const syncSelection = () => synchronizeTreeSelection(store, spaces, agents, spacesView, agentsView, output);
   context.subscriptions.push(
     output,
@@ -56,6 +61,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     spacesView,
     agentsView,
     status,
+    overallStatus,
     store.onDidChange(() => { void syncSelection(); }),
     store.onDidChange(updateStatus),
     spacesView.onDidChangeVisibility(() => { void syncSelection(); }),
@@ -323,14 +329,19 @@ class HerdrController implements vscode.Disposable {
   }
 
   async openAgentByPane(paneId: string): Promise<void> {
-    if (!this.currentAgents().some((agent) => agent.pane_id === paneId)) {
+    const agent = this.snapshot?.agents.find((candidate) => candidate.pane_id === paneId);
+    const workspace = agent
+      ? this.snapshot?.workspaces.find((candidate) => candidate.workspace_id === agent.workspace_id)
+      : undefined;
+    if (!agent || !workspace || !this.snapshot) {
       return;
     }
-    try {
-      await this.focusAgent(paneId);
-    } catch (error) {
-      void vscode.window.showErrorMessage(`Could not focus Herdr agent: ${errorMessage(error)}`);
-    }
+    await this.openAgent({
+      kind: "agent",
+      agent,
+      workspace,
+      root: inferWorkspaceRoot(this.snapshot, workspace),
+    });
   }
 
   private async focusAgent(paneId: string): Promise<void> {
