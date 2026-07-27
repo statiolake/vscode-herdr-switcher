@@ -39,10 +39,15 @@ Herdr remains the source of truth. Cross-window actions are delivered through sh
 - `herdr.session`: optional named Herdr session
 - `herdr.refreshInterval`: live update interval in milliseconds
 - `herdr.createSpaceOnOpen`: automatically create or associate Spaces
+- `herdr.terminalLocation`: open Herdr in the Terminal view (`panel`) or as a pinned editor (`editor`)
 - `herdr.agents`: agents available from the Add Agent picker
 - `herdr.defaultAgent`: agent launched by the `+` button
 
 All settings are user-level settings. The default agents are Claude Code and Codex:
+
+The default terminal location is `panel`. VS Code does not expose a dedicated
+Secondary Side Bar terminal location, but if you move the Terminal view there,
+Herdr follows it.
 
 ```json
 {

@@ -34,6 +34,8 @@ interface WorkspaceLocation {
   workspaceUri: vscode.Uri;
 }
 
+type HerdrTerminalLocation = "panel" | "editor";
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel("Herdr", { log: true });
   const store = new HerdrSnapshotStore();
@@ -556,13 +558,18 @@ class HerdrController implements vscode.Disposable {
   }
 
   private async prepareTerminal(): Promise<vscode.Terminal> {
+    const terminalLocation = this.terminalLocation();
     const candidate = this.terminal && !this.terminal.exitStatus
       ? this.terminal
       : vscode.window.terminals.find((terminal) => terminal.name === this.terminalName());
-    const existing = candidate && isTransientTerminal(candidate) ? candidate : undefined;
+    const existing = candidate
+      && isTransientTerminal(candidate)
+      && terminalMatchesLocation(candidate, terminalLocation)
+      ? candidate
+      : undefined;
     if (existing) {
       this.terminal = existing;
-      await this.showPinnedTerminal(existing);
+      await this.showTerminal(existing, terminalLocation);
       return existing;
     }
     if (candidate && isOwnedHerdrTerminal(candidate, this.terminalName())) {
@@ -576,20 +583,21 @@ class HerdrController implements vscode.Disposable {
       shellArgs: this.client.terminalArgs(),
       cwd: workspaceLocation ? vscode.Uri.file(workspaceLocation.root) : undefined,
       iconPath: new vscode.ThemeIcon("terminal"),
-      location: {
-        viewColumn: vscode.ViewColumn.Active,
-        preserveFocus: false,
-      },
+      location: terminalLocation === "panel"
+        ? vscode.TerminalLocation.Panel
+        : { viewColumn: vscode.ViewColumn.Active, preserveFocus: false },
       isTransient: true,
     });
-    await this.showPinnedTerminal(this.terminal);
+    await this.showTerminal(this.terminal, terminalLocation);
     return this.terminal;
   }
 
-  private async showPinnedTerminal(terminal: vscode.Terminal): Promise<void> {
+  private async showTerminal(terminal: vscode.Terminal, location = this.terminalLocation()): Promise<void> {
     terminal.show(false);
     await waitForTerminalProcess(terminal);
-    await vscode.commands.executeCommand("workbench.action.pinEditor");
+    if (location === "editor") {
+      await vscode.commands.executeCommand("workbench.action.pinEditor");
+    }
   }
 
   private async runningProcesses(workspaceId: string) {
@@ -870,6 +878,10 @@ class HerdrController implements vscode.Disposable {
     const session = vscode.workspace.getConfiguration("herdr").get<string>("session", "").trim();
     return session ? `${TERMINAL_NAME} (${session})` : TERMINAL_NAME;
   }
+
+  private terminalLocation(): HerdrTerminalLocation {
+    return vscode.workspace.getConfiguration("herdr").get<HerdrTerminalLocation>("terminalLocation", "panel");
+  }
 }
 
 function errorMessage(error: unknown): string {
@@ -877,6 +889,13 @@ function errorMessage(error: unknown): string {
     return error.message;
   }
   return error instanceof Error ? error.message : String(error);
+}
+
+function terminalMatchesLocation(terminal: vscode.Terminal, expected: HerdrTerminalLocation): boolean {
+  const location = terminal.creationOptions.location;
+  return expected === "panel"
+    ? location === vscode.TerminalLocation.Panel
+    : typeof location === "object";
 }
 
 async function synchronizeTreeSelection(

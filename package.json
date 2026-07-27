@@ -123,6 +123,17 @@
           "default": true,
           "description": "Create or associate a Herdr space for each folder opened in VS Code."
         },
+        "herdr.terminalLocation": {
+          "type": "string",
+          "scope": "application",
+          "enum": ["panel", "editor"],
+          "enumDescriptions": [
+            "Open Herdr in the Terminal view. This follows the view if it has been moved to the Secondary Side Bar.",
+            "Open Herdr as a pinned terminal editor."
+          ],
+          "default": "panel",
+          "description": "Where to open the interactive Herdr terminal."
+        },
         "herdr.agents": {
           "type": "array",
           "scope": "application",
