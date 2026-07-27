@@ -55,6 +55,16 @@
         "icon": "$(person)"
       },
       {
+        "command": "herdr.renameAgent",
+        "title": "Herdr: Rename Agent...",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "herdr.closeAgent",
+        "title": "Herdr: Close Agent",
+        "icon": "$(trash)"
+      },
+      {
         "command": "herdr.openActiveAgent",
         "title": "Herdr: Open Active Agent"
       },
@@ -201,6 +211,16 @@
           "command": "herdr.closeSpace",
           "when": "view == herdr.spaces && viewItem == herdrSpace",
           "group": "herdr@1"
+        },
+        {
+          "command": "herdr.renameAgent",
+          "when": "view == herdr.agents && viewItem == herdrAgent",
+          "group": "herdr@1"
+        },
+        {
+          "command": "herdr.closeAgent",
+          "when": "view == herdr.agents && viewItem == herdrAgent",
+          "group": "herdr@2"
         }
       ]
     }

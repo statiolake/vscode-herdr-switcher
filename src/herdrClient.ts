@@ -85,6 +85,14 @@ export class HerdrClient {
     ]);
   }
 
+  async renamePane(paneId: string, label: string): Promise<void> {
+    await this.runVoid(["pane", "rename", paneId, label]);
+  }
+
+  async closePane(paneId: string): Promise<void> {
+    await this.runVoid(["pane", "close", paneId]);
+  }
+
   async closeWorkspace(workspaceId: string): Promise<void> {
     await this.runVoid(["workspace", "close", workspaceId]);
   }

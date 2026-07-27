@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { agentShellCommand, configuredAgents, type ConfiguredAgent } from "./agentConfiguration";
+import { agentDisplayName } from "./agentPresentation";
 import { AgentStatusBar } from "./agentStatusBar";
 import { decodeDevContainerHostPath } from "./devContainer";
 import { GitBranchProvider } from "./gitBranchProvider";
@@ -60,6 +61,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("herdr.refresh", () => controller.refresh(true)),
     vscode.commands.registerCommand("herdr.openSpace", (node: SpaceNode) => controller.openSpace(node)),
     vscode.commands.registerCommand("herdr.openAgent", (node: AgentNode) => controller.openAgent(node)),
+    vscode.commands.registerCommand("herdr.renameAgent", (node: AgentNode) => controller.renameAgent(node)),
+    vscode.commands.registerCommand("herdr.closeAgent", (node: AgentNode) => controller.closeAgent(node)),
     vscode.commands.registerCommand("herdr.openActiveAgent", () => controller.openActiveAgent()),
     vscode.commands.registerCommand("herdr.openAgentByPane", (paneId: string) => controller.openAgentByPane(paneId)),
     vscode.commands.registerCommand("herdr.attachSpace", (node: SpaceNode) => controller.attachSpace(node)),
@@ -273,6 +276,35 @@ class HerdrController implements vscode.Disposable {
       await this.focusAgent(node.agent.pane_id);
     } catch (error) {
       void vscode.window.showErrorMessage(`Could not focus Herdr agent: ${errorMessage(error)}`);
+    }
+  }
+
+  async renameAgent(node: AgentNode): Promise<void> {
+    const currentName = agentDisplayName(node.agent);
+    const name = await vscode.window.showInputBox({
+      title: "Rename Herdr Agent",
+      prompt: `Enter a name for ${node.workspace.label}`,
+      value: currentName,
+      valueSelection: [0, currentName.length],
+      validateInput: (value) => value.trim() ? undefined : "Agent name cannot be empty.",
+    });
+    if (name === undefined || name.trim() === currentName) {
+      return;
+    }
+    try {
+      await this.client.renamePane(node.agent.pane_id, name.trim());
+      await this.refresh(false);
+    } catch (error) {
+      void vscode.window.showErrorMessage(`Could not rename Herdr agent: ${errorMessage(error)}`);
+    }
+  }
+
+  async closeAgent(node: AgentNode): Promise<void> {
+    try {
+      await this.client.closePane(node.agent.pane_id);
+      await this.refresh(false);
+    } catch (error) {
+      void vscode.window.showErrorMessage(`Could not close Herdr agent: ${errorMessage(error)}`);
     }
   }
 
