@@ -11,6 +11,7 @@ Bring [Herdr](https://github.com/ogulcancelik/herdr) spaces and AI coding agents
 - Use a Space's terminal button to attach from that Space's VS Code window.
 - Start Claude Code, Codex, or custom agents in dedicated Herdr tabs.
 - Close Spaces from the `…` menu, with a warning when non-shell processes are running.
+- Run Herdr on the local host when VS Code is connected to a Dev Container.
 
 ## Requirements
 
@@ -18,6 +19,11 @@ Bring [Herdr](https://github.com/ogulcancelik/herdr) spaces and AI coding agents
 - Herdr 0.7.5 or later, available as `herdr` on `PATH`
 
 If Herdr is installed elsewhere, set `herdr.executable` to its path.
+
+Herdr Switcher is a UI extension: Herdr and configured agents run on the machine
+where VS Code is installed. Dev Container workspaces are associated with their
+decoded host path, while navigation still reopens the corresponding container
+window. Other VS Code remote types are not currently supported.
 
 ## Getting started
 

@@ -4,6 +4,7 @@ import type { HerdrAgent, HerdrSnapshot, HerdrWorkspace, PaneProcess, PaneProces
 export interface SpaceBinding {
   root: string;
   workspaceId: string;
+  workspaceUri?: string;
 }
 
 export function normalizeRoot(value: string): string {

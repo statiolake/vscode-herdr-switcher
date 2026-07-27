@@ -2,6 +2,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { configuredAgents, shellCommand, type ConfiguredAgent } from "./agentConfiguration";
 import { AgentStatusBar } from "./agentStatusBar";
+import { decodeDevContainerHostPath } from "./devContainer";
 import { GitBranchProvider } from "./gitBranchProvider";
 import { HerdrClient, HerdrCommandError } from "./herdrClient";
 import {
@@ -26,6 +27,11 @@ import type { HerdrSnapshot } from "./types";
 
 const BINDINGS_KEY = "herdr.spaceBindings.v1";
 const TERMINAL_NAME = "Herdr";
+
+interface WorkspaceLocation {
+  root: string;
+  workspaceUri: vscode.Uri;
+}
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel("Herdr", { log: true });
@@ -93,6 +99,7 @@ class HerdrController implements vscode.Disposable {
   private readonly agentOutputRequests = new Map<string, Promise<AgentOutputPreview>>();
   private readonly agentOutputErrors = new Map<string, string>();
   private readonly reportedSpaceCreationErrors = new Set<string>();
+  private readonly reportedWorkspaceLocationErrors = new Set<string>();
   private readonly closingRoots = new Set<string>();
   private readonly gitBranches = new GitBranchProvider();
 
@@ -220,7 +227,13 @@ class HerdrController implements vscode.Disposable {
     }
     let created = false;
     for (const folder of folders) {
-      created = await this.ensureSpace(folder.uri.fsPath, folder.name) || created;
+      const location = this.workspaceLocation(folder);
+      if (!location) {
+        this.reportWorkspaceLocationError(folder);
+        continue;
+      }
+      this.reportedWorkspaceLocationErrors.delete(folder.uri.toString());
+      created = await this.ensureSpace(location, folder.name) || created;
     }
     if (created) {
       await this.refresh(false);
@@ -238,7 +251,9 @@ class HerdrController implements vscode.Disposable {
       return;
     }
     await this.publishWorkspaceNavigation(node.workspace.workspace_id);
-    await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(root), { forceNewWindow: true });
+    await vscode.commands.executeCommand(
+      "vscode.openFolder", this.workspaceUri(node.workspace.workspace_id, root), { forceNewWindow: true },
+    );
   }
 
   async openAgent(node: AgentNode): Promise<void> {
@@ -249,7 +264,9 @@ class HerdrController implements vscode.Disposable {
     }
     if (!this.isCurrentRoot(root)) {
       await this.publishAgentNavigation(node.agent.pane_id);
-      await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(root), { forceNewWindow: true });
+      await vscode.commands.executeCommand(
+        "vscode.openFolder", this.workspaceUri(node.workspace.workspace_id, root), { forceNewWindow: true },
+      );
       return;
     }
     try {
@@ -298,7 +315,9 @@ class HerdrController implements vscode.Disposable {
       try {
         await this.navigationIntents.publishAttach(node.workspace.workspace_id);
         await this.client.focusWorkspace(node.workspace.workspace_id);
-        await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(root), { forceNewWindow: true });
+        await vscode.commands.executeCommand(
+          "vscode.openFolder", this.workspaceUri(node.workspace.workspace_id, root), { forceNewWindow: true },
+        );
       } catch (error) {
         void vscode.window.showErrorMessage(`Could not attach to Herdr space: ${errorMessage(error)}`);
       }
@@ -358,7 +377,9 @@ class HerdrController implements vscode.Disposable {
         await this.closeCurrentWindowSpace(node.workspace.workspace_id, root);
       } else {
         await this.navigationIntents.publishClose(node.workspace.workspace_id);
-        await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(root), { forceNewWindow: true });
+        await vscode.commands.executeCommand(
+          "vscode.openFolder", this.workspaceUri(node.workspace.workspace_id, root), { forceNewWindow: true },
+        );
       }
     } catch (error) {
       void vscode.window.showErrorMessage(`Could not close Herdr space: ${errorMessage(error)}`);
@@ -516,10 +537,12 @@ class HerdrController implements vscode.Disposable {
       candidate.dispose();
     }
     const config = vscode.workspace.getConfiguration("herdr");
+    const workspaceLocation = this.currentWorkspaceLocation();
     this.terminal = vscode.window.createTerminal({
       name: this.terminalName(),
       shellPath: config.get("executable", "herdr"),
       shellArgs: this.client.terminalArgs(),
+      cwd: workspaceLocation ? vscode.Uri.file(workspaceLocation.root) : undefined,
       iconPath: new vscode.ThemeIcon("terminal"),
       location: {
         viewColumn: vscode.ViewColumn.Active,
@@ -614,9 +637,13 @@ class HerdrController implements vscode.Disposable {
       return undefined;
     }
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
-      const workspace = findWorkspaceForRoot(this.snapshot, folder.uri.fsPath, this.bindings());
+      const location = this.workspaceLocation(folder);
+      if (!location) {
+        continue;
+      }
+      const workspace = findWorkspaceForRoot(this.snapshot, location.root, this.bindings());
       if (workspace) {
-        return { workspace, root: folder.uri.fsPath };
+        return { workspace, root: location.root };
       }
     }
     return undefined;
@@ -636,7 +663,8 @@ class HerdrController implements vscode.Disposable {
     throw lastError;
   }
 
-  private async ensureSpace(root: string, label: string): Promise<boolean> {
+  private async ensureSpace(location: WorkspaceLocation, label: string): Promise<boolean> {
+    const { root } = location;
     if (this.closingRoots.has(normalizeRoot(root))) {
       return false;
     }
@@ -647,7 +675,7 @@ class HerdrController implements vscode.Disposable {
     const existing = findWorkspaceForRoot(this.snapshot, root, bindings);
     if (existing) {
       this.reportedSpaceCreationErrors.delete(normalizeRoot(root));
-      await this.saveBinding(root, existing.workspace_id);
+      await this.saveBinding(location, existing.workspace_id);
       return false;
     }
     try {
@@ -656,12 +684,12 @@ class HerdrController implements vscode.Disposable {
       const rechecked = findWorkspaceForRoot(this.snapshot, root, this.bindings());
       if (rechecked) {
         this.reportedSpaceCreationErrors.delete(normalizeRoot(root));
-        await this.saveBinding(root, rechecked.workspace_id);
+        await this.saveBinding(location, rechecked.workspace_id);
         return false;
       }
       const created = await this.client.createWorkspace(root, label || path.basename(root));
       this.reportedSpaceCreationErrors.delete(normalizeRoot(root));
-      await this.saveBinding(root, created.workspace.workspace_id);
+      await this.saveBinding(location, created.workspace.workspace_id);
       this.output.info(`Created Herdr space ${created.workspace.workspace_id} for ${root}`);
       return true;
     } catch (error) {
@@ -723,14 +751,20 @@ class HerdrController implements vscode.Disposable {
     return this.context.globalState.get<SpaceBinding[]>(BINDINGS_KEY, []);
   }
 
-  private async saveBinding(root: string, workspaceId: string): Promise<void> {
+  private async saveBinding(location: WorkspaceLocation, workspaceId: string): Promise<void> {
+    const { root } = location;
     const normalized = normalizeRoot(root);
     const current = this.bindings();
-    if (current.some((binding) => normalizeRoot(binding.root) === normalized && binding.workspaceId === workspaceId)) {
+    const workspaceUri = location.workspaceUri.toString();
+    if (current.some((binding) =>
+      normalizeRoot(binding.root) === normalized
+      && binding.workspaceId === workspaceId
+      && binding.workspaceUri === workspaceUri
+    )) {
       return;
     }
     const next = current.filter((binding) => normalizeRoot(binding.root) !== normalized && binding.workspaceId !== workspaceId);
-    next.push({ root, workspaceId });
+    next.push({ root, workspaceId, workspaceUri });
     await this.context.globalState.update(BINDINGS_KEY, next);
   }
 
@@ -746,8 +780,58 @@ class HerdrController implements vscode.Disposable {
     return this.bindings().find((binding) => binding.workspaceId === workspaceId)?.root;
   }
 
+  private workspaceLocation(folder: vscode.WorkspaceFolder): WorkspaceLocation | undefined {
+    if (!vscode.env.remoteName) {
+      return { root: folder.uri.fsPath, workspaceUri: folder.uri };
+    }
+    if (vscode.env.remoteName !== "dev-container" || folder.uri.scheme !== "vscode-remote") {
+      return undefined;
+    }
+    const root = decodeDevContainerHostPath(folder.uri.authority);
+    return root ? { root, workspaceUri: folder.uri } : undefined;
+  }
+
+  private currentWorkspaceLocation(): WorkspaceLocation | undefined {
+    for (const folder of vscode.workspace.workspaceFolders ?? []) {
+      const location = this.workspaceLocation(folder);
+      if (location) {
+        return location;
+      }
+    }
+    return undefined;
+  }
+
+  private workspaceUri(workspaceId: string, fallbackRoot: string): vscode.Uri {
+    const serialized = this.bindings().find((binding) => binding.workspaceId === workspaceId)?.workspaceUri;
+    if (serialized) {
+      try {
+        return vscode.Uri.parse(serialized, true);
+      } catch (error) {
+        this.output.warn(`Could not parse the VS Code URI for Herdr space ${workspaceId}: ${errorMessage(error)}`);
+      }
+    }
+    return vscode.Uri.file(fallbackRoot);
+  }
+
+  private reportWorkspaceLocationError(folder: vscode.WorkspaceFolder): void {
+    const key = folder.uri.toString();
+    if (this.reportedWorkspaceLocationErrors.has(key)) {
+      return;
+    }
+    this.reportedWorkspaceLocationErrors.add(key);
+    const detail = vscode.env.remoteName === "dev-container"
+      ? "the local host path could not be decoded from the Dev Container URI"
+      : `remote type “${vscode.env.remoteName ?? "unknown"}” is not supported`;
+    const message = `Could not associate “${folder.name}” with Herdr because ${detail}.`;
+    this.output.error(`${message} URI: ${folder.uri.toString()}`);
+    void vscode.window.showWarningMessage(message);
+  }
+
   private isCurrentRoot(root: string): boolean {
-    return (vscode.workspace.workspaceFolders ?? []).some((folder) => normalizeRoot(folder.uri.fsPath) === normalizeRoot(root));
+    return (vscode.workspace.workspaceFolders ?? []).some((folder) => {
+      const location = this.workspaceLocation(folder);
+      return location && normalizeRoot(location.root) === normalizeRoot(root);
+    });
   }
 
   private terminalName(): string {
