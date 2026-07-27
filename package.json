@@ -181,11 +181,6 @@
     "menus": {
       "view/title": [
         {
-          "command": "herdr.refresh",
-          "when": "view == herdr.spaces || view == herdr.agents",
-          "group": "navigation@1"
-        },
-        {
           "command": "herdr.addAgent",
           "when": "view == herdr.agents",
           "group": "navigation@2"
