@@ -35,6 +35,13 @@ export function shellCommand(argv: readonly string[], platform = process.platfor
   return argv.map(quote).join(" ");
 }
 
+export function agentShellCommand(argv: readonly string[], platform = process.platform): string {
+  const command = shellCommand(argv, platform);
+  return platform === "win32"
+    ? `& ${command}; exit $LASTEXITCODE`
+    : `${command}; exit $?`;
+}
+
 function quotePosix(value: string): string {
   return `'${value.replaceAll("'", `'"'"'`)}'`;
 }

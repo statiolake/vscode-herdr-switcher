@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { configuredAgents, shellCommand, type ConfiguredAgent } from "./agentConfiguration";
+import { agentShellCommand, configuredAgents, type ConfiguredAgent } from "./agentConfiguration";
 import { AgentStatusBar } from "./agentStatusBar";
 import { decodeDevContainerHostPath } from "./devContainer";
 import { GitBranchProvider } from "./gitBranchProvider";
@@ -607,7 +607,7 @@ class HerdrController implements vscode.Disposable {
           await this.client.focusWorkspace(workspace.workspace_id);
           const created = await this.client.createTab(workspace.workspace_id, root, agent.name);
           try {
-            await this.client.runPane(created.root_pane.pane_id, shellCommand(agent.command));
+            await this.client.runPane(created.root_pane.pane_id, agentShellCommand(agent.command));
           } catch (error) {
             try {
               await this.client.closeTab(created.tab.tab_id);

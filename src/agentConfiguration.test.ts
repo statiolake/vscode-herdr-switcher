@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { configuredAgents, shellCommand } from "./agentConfiguration";
+import { agentShellCommand, configuredAgents, shellCommand } from "./agentConfiguration";
 
 test("configured agents reject malformed and duplicate entries", () => {
   assert.deepEqual(configuredAgents([
@@ -18,4 +18,18 @@ test("agent argv is safely serialized for a POSIX shell", () => {
 
 test("agent argv is safely serialized for PowerShell", () => {
   assert.equal(shellCommand(["claude", "it's"], "win32"), `'claude' 'it''s'`);
+});
+
+test("an agent exits its POSIX shell while preserving its status", () => {
+  assert.equal(
+    agentShellCommand(["claude", "hello world"], "darwin"),
+    `'claude' 'hello world'; exit $?`,
+  );
+});
+
+test("an agent exits its PowerShell while preserving its status", () => {
+  assert.equal(
+    agentShellCommand(["claude", "hello world"], "win32"),
+    `& 'claude' 'hello world'; exit $LASTEXITCODE`,
+  );
 });
