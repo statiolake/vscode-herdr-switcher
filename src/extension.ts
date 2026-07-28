@@ -118,12 +118,19 @@ class HerdrController implements vscode.Disposable {
   private readonly reportedWorkspaceLocationErrors = new Set<string>();
   private readonly closingRoots = new Set<string>();
   private readonly gitBranches = new GitBranchProvider();
+  private readonly terminalCloseSubscription: vscode.Disposable;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly store: HerdrSnapshotStore,
     private readonly output: vscode.LogOutputChannel,
-  ) {}
+  ) {
+    this.terminalCloseSubscription = vscode.window.onDidCloseTerminal((terminal) => {
+      if (this.terminal === terminal) {
+        this.terminal = undefined;
+      }
+    });
+  }
 
   async start(): Promise<void> {
     await this.refresh(false);
@@ -179,6 +186,7 @@ class HerdrController implements vscode.Disposable {
     if (this.timer) {
       clearTimeout(this.timer);
     }
+    this.terminalCloseSubscription.dispose();
     this.refreshEmitter.dispose();
   }
 
@@ -569,6 +577,9 @@ class HerdrController implements vscode.Disposable {
     const args = target.kind === "agent"
       ? this.client.agentAttachArgs(target.paneId)
       : this.client.terminalArgs();
+    if (this.terminal?.exitStatus) {
+      this.terminal = undefined;
+    }
     const active = this.terminal && !this.terminal.exitStatus ? this.terminal : undefined;
     if (active && !terminalMatches(active, name, args, terminalLocation)) {
       active.dispose();
