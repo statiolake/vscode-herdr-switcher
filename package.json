@@ -74,11 +74,6 @@
         "icon": "$(terminal)"
       },
       {
-        "command": "herdr.spaceActions",
-        "title": "Herdr: Space Actions",
-        "icon": "$(ellipsis)"
-      },
-      {
         "command": "herdr.closeSpace",
         "title": "Herdr: Close Space",
         "icon": "$(trash)"
@@ -207,11 +202,6 @@
           "command": "herdr.attachSpace",
           "when": "view == herdr.spaces && viewItem == herdrSpace",
           "group": "inline@1"
-        },
-        {
-          "command": "herdr.spaceActions",
-          "when": "view == herdr.spaces && viewItem == herdrSpace",
-          "group": "inline@2"
         },
         {
           "command": "herdr.closeSpace",

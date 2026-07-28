@@ -74,7 +74,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("herdr.openActiveAgent", () => controller.openActiveAgent()),
     vscode.commands.registerCommand("herdr.openAgentByPane", (paneId: string) => controller.openAgentByPane(paneId)),
     vscode.commands.registerCommand("herdr.attachSpace", (node: SpaceNode) => controller.attachSpace(node)),
-    vscode.commands.registerCommand("herdr.spaceActions", (node: SpaceNode) => controller.showSpaceActions(node)),
     vscode.commands.registerCommand("herdr.closeSpace", (node: SpaceNode) => controller.closeSpace(node)),
     vscode.commands.registerCommand("herdr.addAgent", () => controller.addAgent()),
     vscode.commands.registerCommand("herdr.addDefaultAgent", () => controller.addDefaultAgent()),
@@ -374,20 +373,6 @@ class HerdrController implements vscode.Disposable {
       await this.refresh(false);
     } catch (error) {
       void vscode.window.showErrorMessage(`Could not attach to Herdr space: ${errorMessage(error)}`);
-    }
-  }
-
-  async showSpaceActions(node: SpaceNode): Promise<void> {
-    const selected = await vscode.window.showQuickPick(
-      [{
-        label: "$(trash) Close Space",
-        description: node.workspace.label,
-        action: "close" as const,
-      }],
-      { title: `Herdr Space: ${node.workspace.label}`, placeHolder: "Choose an action" },
-    );
-    if (selected?.action === "close") {
-      await this.closeSpace(node);
     }
   }
 
