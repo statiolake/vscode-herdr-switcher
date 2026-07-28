@@ -19,6 +19,7 @@ import {
 import { ConsumedNavigationIntents, HerdrNavigationIntentStore } from "./navigationIntent";
 import { formatOutputPreview, type AgentOutputPreview } from "./outputPreview";
 import { OverallStatusBar } from "./overallStatusBar";
+import { RootLock } from "./rootLock";
 import {
   AgentsTreeProvider,
   HerdrSnapshotStore,
@@ -120,12 +121,14 @@ class HerdrController implements vscode.Disposable {
   private readonly gitBranches = new GitBranchProvider();
   private readonly terminalCloseSubscription: vscode.Disposable;
   private windowPresenceError: string | undefined;
+  private readonly spaceCreationLock: RootLock;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly store: HerdrSnapshotStore,
     private readonly output: vscode.LogOutputChannel,
   ) {
+    this.spaceCreationLock = new RootLock(path.join(context.globalStorageUri.fsPath, "space-creation-locks"));
     this.terminalCloseSubscription = vscode.window.onDidCloseTerminal((terminal) => {
       if (this.terminal === terminal) {
         this.terminal = undefined;
@@ -762,19 +765,21 @@ class HerdrController implements vscode.Disposable {
       return false;
     }
     try {
-      // Re-read immediately before mutation to reduce duplicate creation across windows.
-      this.snapshot = await this.client.snapshot();
-      const rechecked = findWorkspaceForRoot(this.snapshot, root, this.bindings());
-      if (rechecked) {
+      return await this.spaceCreationLock.run(normalizeRoot(root), async () => {
+        // Re-read inside the cross-window lock before mutating Herdr.
+        this.snapshot = await this.client.snapshot();
+        const rechecked = findWorkspaceForRoot(this.snapshot, root, this.bindings());
+        if (rechecked) {
+          this.reportedSpaceCreationErrors.delete(normalizeRoot(root));
+          await this.saveBinding(location, rechecked.workspace_id);
+          return false;
+        }
+        const created = await this.client.createWorkspace(root, label || path.basename(root));
         this.reportedSpaceCreationErrors.delete(normalizeRoot(root));
-        await this.saveBinding(location, rechecked.workspace_id);
-        return false;
-      }
-      const created = await this.client.createWorkspace(root, label || path.basename(root));
-      this.reportedSpaceCreationErrors.delete(normalizeRoot(root));
-      await this.saveBinding(location, created.workspace.workspace_id);
-      this.output.info(`Created Herdr space ${created.workspace.workspace_id} for ${root}`);
-      return true;
+        await this.saveBinding(location, created.workspace.workspace_id);
+        this.output.info(`Created Herdr space ${created.workspace.workspace_id} for ${root}`);
+        return true;
+      });
     } catch (error) {
       this.output.error(`Could not create a Herdr space for ${root}: ${errorMessage(error)}`);
       const normalized = normalizeRoot(root);
