@@ -47,9 +47,16 @@ export function findWorkspaceForRoot(
 }
 
 export function agentsForWorkspace(snapshot: HerdrSnapshot, workspaceId: string): HerdrAgent[] {
-  return snapshot.agents
-    .filter((agent) => agent.workspace_id === workspaceId)
-    .sort((left, right) => left.pane_id.localeCompare(right.pane_id, undefined, { numeric: true }));
+  return agentsInDisplayOrder(snapshot).filter((agent) => agent.workspace_id === workspaceId);
+}
+
+export function agentsInDisplayOrder(snapshot: HerdrSnapshot): HerdrAgent[] {
+  return [...snapshot.agents].sort((left, right) =>
+    workspaceOrdinal(snapshot, left.workspace_id) - workspaceOrdinal(snapshot, right.workspace_id)
+    || tabOrdinal(snapshot, left.tab_id) - tabOrdinal(snapshot, right.tab_id)
+    || paneOrdinal(left.pane_id) - paneOrdinal(right.pane_id)
+    || left.pane_id.localeCompare(right.pane_id, undefined, { numeric: true }),
+  );
 }
 
 export function activeAgentForWorkspace(snapshot: HerdrSnapshot, workspaceId: string): HerdrAgent | undefined {
@@ -92,4 +99,14 @@ function paneOrdinal(paneId: string): number {
   }
   const decimal = Number(match[1]);
   return Number.isFinite(decimal) ? decimal : Number.MAX_SAFE_INTEGER - 1;
+}
+
+function workspaceOrdinal(snapshot: HerdrSnapshot, workspaceId: string): number {
+  return snapshot.workspaces.find((workspace) => workspace.workspace_id === workspaceId)?.number
+    ?? Number.MAX_SAFE_INTEGER;
+}
+
+function tabOrdinal(snapshot: HerdrSnapshot, tabId: string): number {
+  return snapshot.tabs.find((tab) => tab.tab_id === tabId)?.number
+    ?? Number.MAX_SAFE_INTEGER;
 }

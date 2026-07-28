@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activeAgentForWorkspace, activeTreeSelection, agentsForWorkspace, findWorkspaceForRoot, inferWorkspaceRoot, nonShellForegroundProcesses, normalizeRoot } from "./model";
+import { activeAgentForWorkspace, activeTreeSelection, agentsForWorkspace, agentsInDisplayOrder, findWorkspaceForRoot, inferWorkspaceRoot, nonShellForegroundProcesses, normalizeRoot } from "./model";
 import type { HerdrSnapshot } from "./types";
 
 const snapshot: HerdrSnapshot = {
@@ -39,8 +39,23 @@ test("a stale binding falls back to exact root inference", () => {
   assert.equal(found?.workspace_id, "w1");
 });
 
-test("agents are grouped and pane-sorted", () => {
+test("agents are displayed in workspace, tab, and pane order", () => {
   assert.deepEqual(agentsForWorkspace(snapshot, "w1").map((agent) => agent.pane_id), ["w1:p1", "w1:p2"]);
+  const value = structuredClone(snapshot);
+  value.tabs.push({
+    tab_id: "w1:t2",
+    workspace_id: "w1",
+    label: "2",
+    number: 2,
+    focused: false,
+    pane_count: 1,
+    agent_status: "idle",
+  });
+  value.agents[1]!.tab_id = "w1:t2";
+  assert.deepEqual(
+    agentsInDisplayOrder(value).map((agent) => agent.pane_id),
+    ["w1:p2", "w1:p1"],
+  );
 });
 
 test("normalization removes trailing separators", () => {

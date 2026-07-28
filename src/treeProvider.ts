@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { agentDisplayName, agentStatusPresentation } from "./agentPresentation";
-import { inferWorkspaceRoot } from "./model";
+import { agentsInDisplayOrder, inferWorkspaceRoot } from "./model";
 import { snapshotViewKey } from "./snapshotView";
 import type { AgentStatus, HerdrAgent, HerdrSnapshot, HerdrWorkspace } from "./types";
 
@@ -184,13 +184,7 @@ export class AgentsTreeProvider implements vscode.TreeDataProvider<AgentTreeNode
 
   private rebuildNodes(): void {
     const snapshot = this.store.snapshot;
-    this.nodes = snapshot ? [...snapshot.agents]
-      .sort((left, right) => {
-        const leftWorkspace = workspaceNumber(snapshot, left.workspace_id);
-        const rightWorkspace = workspaceNumber(snapshot, right.workspace_id);
-        return leftWorkspace - rightWorkspace
-          || left.pane_id.localeCompare(right.pane_id, undefined, { numeric: true });
-      })
+    this.nodes = snapshot ? agentsInDisplayOrder(snapshot)
       .flatMap((agent): AgentNode[] => {
         const workspace = snapshot.workspaces.find((candidate) => candidate.workspace_id === agent.workspace_id);
         return workspace
@@ -203,11 +197,6 @@ export class AgentsTreeProvider implements vscode.TreeDataProvider<AgentTreeNode
     this.storeSubscription.dispose();
     this.changeEmitter.dispose();
   }
-}
-
-function workspaceNumber(snapshot: HerdrSnapshot, workspaceId: string): number {
-  return snapshot.workspaces.find((workspace) => workspace.workspace_id === workspaceId)?.number
-    ?? Number.MAX_SAFE_INTEGER;
 }
 
 function selectionGeneration(snapshot: HerdrSnapshot | undefined): string {

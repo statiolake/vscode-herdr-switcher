@@ -12,6 +12,7 @@ interface AgentStatusEntry {
 
 export class AgentStatusBar implements vscode.Disposable {
   private readonly entries = new Map<string, AgentStatusEntry>();
+  private orderKey = "";
 
   constructor(private readonly command: string) {}
 
@@ -19,15 +20,16 @@ export class AgentStatusBar implements vscode.Disposable {
     agents: readonly HerdrAgent[],
     readPreview: (paneId: string) => Promise<AgentOutputPreview>,
   ): void {
-    const paneIds = new Set(agents.map((agent) => agent.pane_id));
-    for (const [paneId, entry] of this.entries) {
-      if (!paneIds.has(paneId)) {
+    const orderKey = agents.map((agent) => agent.pane_id).join("\0");
+    if (orderKey !== this.orderKey) {
+      for (const entry of this.entries.values()) {
         entry.item.dispose();
-        this.entries.delete(paneId);
       }
+      this.entries.clear();
+      this.orderKey = orderKey;
     }
-    for (const agent of agents) {
-      const entry = this.entry(agent.pane_id);
+    agents.forEach((agent, index) => {
+      const entry = this.entry(agent.pane_id, 100 - index);
       entry.generation += 1;
       const generation = entry.generation;
       this.render(entry, agent);
@@ -40,7 +42,7 @@ export class AgentStatusBar implements vscode.Disposable {
           this.render(entry, agent);
         }
       });
-    }
+    });
   }
 
   dispose(): void {
@@ -50,12 +52,12 @@ export class AgentStatusBar implements vscode.Disposable {
     this.entries.clear();
   }
 
-  private entry(paneId: string): AgentStatusEntry {
+  private entry(paneId: string, priority: number): AgentStatusEntry {
     const existing = this.entries.get(paneId);
     if (existing) {
       return existing;
     }
-    const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+    const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, priority);
     item.command = {
       command: this.command,
       title: "Open Herdr Agent",
