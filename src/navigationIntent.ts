@@ -5,6 +5,7 @@ const SOURCE = "vscode-herdr-switcher";
 const TOKEN = "vscode-navigation-intent";
 const ATTACH_TOKEN = "vscode-attach-intent";
 const CLOSE_TOKEN = "vscode-close-intent";
+const WINDOW_PRESENCE_TOKEN = "vscode-window-presence";
 export const NAVIGATION_INTENT_TTL_MS = 60_000;
 
 export type NavigationIntent =
@@ -30,6 +31,16 @@ export class HerdrNavigationIntentStore {
 
   async publishClose(workspaceId: string): Promise<void> {
     await this.client.setWorkspaceToken(workspaceId, SOURCE, CLOSE_TOKEN, requestId(), NAVIGATION_INTENT_TTL_MS);
+  }
+
+  async reportWindowPresence(workspaceId: string, ttlMs: number): Promise<void> {
+    await this.client.setWorkspaceToken(workspaceId, SOURCE, WINDOW_PRESENCE_TOKEN, "open", ttlMs);
+  }
+
+  hasWindowPresence(snapshot: HerdrSnapshot, workspaceId: string): boolean {
+    return snapshot.workspaces
+      .find((workspace) => workspace.workspace_id === workspaceId)
+      ?.tokens?.[WINDOW_PRESENCE_TOKEN] === "open";
   }
 
   find(snapshot: HerdrSnapshot, workspaceId: string): NavigationIntent | undefined {

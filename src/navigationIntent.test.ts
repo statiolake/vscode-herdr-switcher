@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ConsumedNavigationIntents, findNavigationIntent, NAVIGATION_INTENT_TTL_MS } from "./navigationIntent";
+import { ConsumedNavigationIntents, findNavigationIntent, HerdrNavigationIntentStore, NAVIGATION_INTENT_TTL_MS } from "./navigationIntent";
 import type { HerdrSnapshot } from "./types";
 
 function snapshot(): HerdrSnapshot {
@@ -65,6 +65,14 @@ test("a close intent takes precedence over focus intents", () => {
   assert.deepEqual(findNavigationIntent(value, "w1"), {
     requestId: "close-request", workspaceId: "w1", kind: "close",
   });
+});
+
+test("window presence is scoped to its workspace", () => {
+  const value = snapshot();
+  value.workspaces[1]!.tokens = { "vscode-window-presence": "open" };
+  const store = new HerdrNavigationIntentStore({} as never);
+  assert.equal(store.hasWindowPresence(value, "w1"), false);
+  assert.equal(store.hasWindowPresence(value, "w2"), true);
 });
 
 test("consumed intent receipts suppress stale snapshots until their TTL expires", () => {

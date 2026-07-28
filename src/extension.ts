@@ -81,7 +81,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("herdr.closeSpace", (node: SpaceNode) => controller.closeSpace(node)),
     vscode.commands.registerCommand("herdr.addAgent", () => controller.addAgent()),
     vscode.commands.registerCommand("herdr.addDefaultAgent", () => controller.addDefaultAgent()),
-    vscode.workspace.onDidChangeWorkspaceFolders(() => controller.reconcileFolders()),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => controller.reconcileWorkspace()),
     vscode.window.onDidChangeWindowState((state) => {
       if (state.focused) {
         void controller.handleWindowActivated();
@@ -119,6 +119,7 @@ class HerdrController implements vscode.Disposable {
   private readonly closingRoots = new Set<string>();
   private readonly gitBranches = new GitBranchProvider();
   private readonly terminalCloseSubscription: vscode.Disposable;
+  private windowPresenceError: string | undefined;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -133,8 +134,6 @@ class HerdrController implements vscode.Disposable {
   }
 
   async start(): Promise<void> {
-    await this.refresh(false);
-    await this.reconcileFolders();
     await this.handleWindowActivated();
     this.schedule();
   }
@@ -197,7 +196,7 @@ class HerdrController implements vscode.Disposable {
     if (this.timer) {
       clearTimeout(this.timer);
     }
-    void this.refresh(true).then(() => this.reconcileFolders());
+    void this.refresh(true).then(() => this.reconcileWorkspace());
     this.schedule();
   }
 
@@ -265,6 +264,11 @@ class HerdrController implements vscode.Disposable {
     if (created) {
       await this.refresh(false);
     }
+  }
+
+  async reconcileWorkspace(): Promise<void> {
+    await this.reconcileFolders();
+    await this.reportWindowPresence();
   }
 
   async openSpace(node: SpaceNode): Promise<void> {
@@ -422,11 +426,16 @@ class HerdrController implements vscode.Disposable {
     try {
       if (this.isCurrentRoot(root)) {
         await this.closeCurrentWindowSpace(node.workspace.workspace_id, root);
-      } else {
+      } else if (
+        this.snapshot
+        && this.navigationIntents.hasWindowPresence(this.snapshot, node.workspace.workspace_id)
+      ) {
         await this.navigationIntents.publishClose(node.workspace.workspace_id);
         await vscode.commands.executeCommand(
           "vscode.openFolder", this.workspaceUri(node.workspace.workspace_id, root), { forceNewWindow: true },
         );
+      } else {
+        await this.closeUnopenedSpace(node.workspace.workspace_id, root);
       }
     } catch (error) {
       void vscode.window.showErrorMessage(`Could not close Herdr space: ${errorMessage(error)}`);
@@ -460,7 +469,7 @@ class HerdrController implements vscode.Disposable {
 
   async handleWindowActivated(): Promise<void> {
     await this.refresh(false);
-    await this.reconcileFolders();
+    await this.reconcileWorkspace();
     if (!await this.consumeNavigationIntent()) {
       await this.activateCurrentSpace();
     }
@@ -642,6 +651,12 @@ class HerdrController implements vscode.Disposable {
     }, 3_000);
   }
 
+  private async closeUnopenedSpace(workspaceId: string, root: string): Promise<void> {
+    await this.removeBinding(root, workspaceId);
+    await this.client.closeWorkspace(workspaceId);
+    await this.refresh(false);
+  }
+
   private async startConfiguredAgent(agent: ConfiguredAgent): Promise<void> {
     if ((vscode.workspace.workspaceFolders?.length ?? 0) === 0) {
       void vscode.window.showErrorMessage(
@@ -803,7 +818,7 @@ class HerdrController implements vscode.Disposable {
     const interval = vscode.workspace.getConfiguration("herdr").get("refreshInterval", 1000);
     this.timer = setTimeout(async () => {
       await this.refresh(false);
-      await this.reconcileFolders();
+      await this.reconcileWorkspace();
       await this.consumeNavigationIntent();
       this.schedule();
     }, interval);
@@ -813,6 +828,27 @@ class HerdrController implements vscode.Disposable {
     const config = vscode.workspace.getConfiguration("herdr");
     const session = config.get<string>("session", "").trim();
     return new HerdrClient({ executable: config.get("executable", "herdr"), session: session || undefined });
+  }
+
+  private async reportWindowPresence(): Promise<void> {
+    const workspace = this.currentWorkspace();
+    if (!workspace) {
+      return;
+    }
+    const refreshInterval = vscode.workspace.getConfiguration("herdr").get("refreshInterval", 1000);
+    try {
+      await this.navigationIntents.reportWindowPresence(
+        workspace.workspace_id,
+        Math.max(5_000, refreshInterval * 3),
+      );
+      this.windowPresenceError = undefined;
+    } catch (error) {
+      const message = errorMessage(error);
+      if (message !== this.windowPresenceError) {
+        this.windowPresenceError = message;
+        this.output.debug(`Could not report VS Code window presence: ${message}`);
+      }
+    }
   }
 
   private bindings(): SpaceBinding[] {
