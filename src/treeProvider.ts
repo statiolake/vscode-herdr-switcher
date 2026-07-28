@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { agentDisplayName, agentStatusPresentation } from "./agentPresentation";
 import { inferWorkspaceRoot } from "./model";
+import { snapshotViewKey } from "./snapshotView";
 import type { AgentStatus, HerdrAgent, HerdrSnapshot, HerdrWorkspace } from "./types";
 
 export interface SpaceNode {
@@ -32,17 +33,27 @@ export class HerdrSnapshotStore implements vscode.Disposable {
   snapshot: HerdrSnapshot | undefined;
   error: string | undefined;
   branches = new Map<string, string>();
+  private viewKey: string | undefined;
 
   setSnapshot(snapshot: HerdrSnapshot, branches = this.branches): void {
+    const viewKey = snapshotViewKey(snapshot, branches);
+    const changed = viewKey !== this.viewKey;
     this.snapshot = snapshot;
     this.branches = branches;
     this.error = undefined;
-    this.changeEmitter.fire();
+    this.viewKey = viewKey;
+    if (changed) {
+      this.changeEmitter.fire();
+    }
   }
 
   setError(message: string): void {
+    // Keep the last good tree stable across transient polling failures.
+    const changed = this.snapshot === undefined && this.error !== message;
     this.error = message;
-    this.changeEmitter.fire();
+    if (changed) {
+      this.changeEmitter.fire();
+    }
   }
 
   dispose(): void {

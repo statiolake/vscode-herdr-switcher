@@ -48,9 +48,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const controller = new HerdrController(context, store, output);
   const status = new AgentStatusBar("herdr.openAgentByPane");
   const overallStatus = new OverallStatusBar();
-  const updateStatus = () => {
+  const updateStatus = (snapshot: HerdrSnapshot | undefined) => {
     status.update(controller.currentAgents(), (paneId) => controller.agentOutputPreview(paneId));
-    overallStatus.update(store.snapshot);
+    overallStatus.update(snapshot);
   };
   const syncSelection = () => synchronizeTreeSelection(store, spaces, agents, spacesView, agentsView, output);
   context.subscriptions.push(
@@ -63,7 +63,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     status,
     overallStatus,
     store.onDidChange(() => { void syncSelection(); }),
-    store.onDidChange(updateStatus),
+    controller.onDidRefresh(updateStatus),
     spacesView.onDidChangeVisibility(() => { void syncSelection(); }),
     agentsView.onDidChangeVisibility(() => { void syncSelection(); }),
     vscode.commands.registerCommand("herdr.refresh", () => controller.refresh(true)),
@@ -96,6 +96,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 export function deactivate(): void {}
 
 class HerdrController implements vscode.Disposable {
+  private readonly refreshEmitter = new vscode.EventEmitter<HerdrSnapshot | undefined>();
+  readonly onDidRefresh = this.refreshEmitter.event;
   private client = this.createClient();
   private navigationIntents = new HerdrNavigationIntentStore(this.client);
   private snapshot: HerdrSnapshot | undefined;
@@ -173,6 +175,7 @@ class HerdrController implements vscode.Disposable {
     if (this.timer) {
       clearTimeout(this.timer);
     }
+    this.refreshEmitter.dispose();
   }
 
   reconfigure(): void {
@@ -211,12 +214,14 @@ class HerdrController implements vscode.Disposable {
       const branches = await this.gitBranches.forSnapshot(snapshot);
       this.snapshot = snapshot;
       this.store.setSnapshot(snapshot, branches);
+      this.refreshEmitter.fire(snapshot);
       this.serverStartAttempted = false;
     } catch (error) {
       const message = errorMessage(error);
       this.snapshot = undefined;
       this.output.debug(`Snapshot failed: ${message}`);
       this.store.setError("Herdr is not running");
+      this.refreshEmitter.fire(undefined);
       if (showError) {
         void vscode.window.showErrorMessage(`Herdr: ${message}`);
       }
