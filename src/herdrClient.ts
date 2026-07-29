@@ -115,10 +115,6 @@ export class HerdrClient {
     return this.options.session ? ["--session", this.options.session] : [];
   }
 
-  agentAttachArgs(target: string): string[] {
-    return [...this.sessionArgs(), "agent", "attach", target, "--takeover"];
-  }
-
   startServer(): Promise<void> {
     return new Promise((resolve, reject) => {
       const child = spawn(this.options.executable, [...this.sessionArgs(), "server"], {

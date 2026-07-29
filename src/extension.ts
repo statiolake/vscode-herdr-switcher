@@ -39,10 +39,6 @@ interface WorkspaceLocation {
 
 type HerdrTerminalLocation = "panel" | "editor";
 
-type HerdrTerminalTarget =
-  | { kind: "session" }
-  | { kind: "agent"; paneId: string; name: string };
-
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel("Herdr", { log: true });
   const store = new HerdrSnapshotStore();
@@ -361,8 +357,8 @@ class HerdrController implements vscode.Disposable {
   }
 
   private async focusAgent(paneId: string): Promise<void> {
+    await this.prepareTerminal();
     await this.retryFocus(() => this.client.focusAgent(paneId));
-    await this.prepareTerminal(this.agentTerminalTarget(paneId));
     await this.refresh(false);
   }
 
@@ -558,11 +554,10 @@ class HerdrController implements vscode.Disposable {
       await vscode.commands.executeCommand("workbench.view.extension.herdr");
       await vscode.commands.executeCommand(intent.kind === "agent" ? "herdr.agents.focus" : "herdr.spaces.focus");
       if (intent.kind === "agent" || intent.kind === "attach") {
+        await this.prepareTerminal();
         if (intent.kind === "agent") {
           await this.retryFocus(() => this.client.focusAgent(intent.paneId));
-          await this.prepareTerminal(this.agentTerminalTarget(intent.paneId));
         } else {
-          await this.prepareTerminal({ kind: "session" });
           await this.retryFocus(() => this.client.focusWorkspace(intent.workspaceId));
         }
       } else {
@@ -576,30 +571,30 @@ class HerdrController implements vscode.Disposable {
     }
   }
 
-  private async prepareTerminal(target: HerdrTerminalTarget = { kind: "session" }): Promise<vscode.Terminal> {
+  private async prepareTerminal(): Promise<vscode.Terminal> {
     const terminalLocation = this.terminalLocation();
-    const name = this.terminalName(target);
-    const args = target.kind === "agent"
-      ? this.client.agentAttachArgs(target.paneId)
-      : this.client.terminalArgs();
-    const active = this.terminal && !this.terminal.exitStatus ? this.terminal : undefined;
-    if (active && !terminalMatches(active, name, args, terminalLocation)) {
-      active.dispose();
-      this.terminal = undefined;
-    }
-    const existing = this.terminal
-      ?? vscode.window.terminals.find((terminal) => terminalMatches(terminal, name, args, terminalLocation));
+    const candidate = this.terminal && !this.terminal.exitStatus
+      ? this.terminal
+      : vscode.window.terminals.find((terminal) => terminal.name === this.terminalName());
+    const existing = candidate
+      && isTransientTerminal(candidate)
+      && terminalMatchesLocation(candidate, terminalLocation)
+      ? candidate
+      : undefined;
     if (existing) {
       this.terminal = existing;
       await this.showTerminal(existing, terminalLocation);
       return existing;
     }
+    if (candidate && isOwnedHerdrTerminal(candidate, this.terminalName())) {
+      candidate.dispose();
+    }
     const config = vscode.workspace.getConfiguration("herdr");
     const workspaceLocation = this.currentWorkspaceLocation();
     this.terminal = vscode.window.createTerminal({
-      name,
+      name: this.terminalName(),
       shellPath: config.get("executable", "herdr"),
-      shellArgs: args,
+      shellArgs: this.client.terminalArgs(),
       cwd: workspaceLocation ? vscode.Uri.file(workspaceLocation.root) : undefined,
       iconPath: new vscode.ThemeIcon("terminal"),
       location: terminalLocation === "panel"
@@ -668,6 +663,7 @@ class HerdrController implements vscode.Disposable {
             throw new Error("The current VS Code folder is not associated with a Herdr space.");
           }
           const { workspace, root } = association;
+          await this.prepareTerminal();
           await this.client.focusWorkspace(workspace.workspace_id);
           const created = await this.client.createTab(workspace.workspace_id, root, agent.name);
           try {
@@ -680,8 +676,7 @@ class HerdrController implements vscode.Disposable {
             }
             throw error;
           }
-          await this.waitForAgent(created.root_pane.pane_id);
-          await this.prepareTerminal(this.agentTerminalTarget(created.root_pane.pane_id));
+          await this.refresh(false);
         },
       );
     } catch (error) {
@@ -691,17 +686,6 @@ class HerdrController implements vscode.Disposable {
 
   private configuredAgentList(): ConfiguredAgent[] {
     return configuredAgents(vscode.workspace.getConfiguration("herdr").get("agents"));
-  }
-
-  private async waitForAgent(paneId: string): Promise<void> {
-    for (let attempt = 0; attempt < 50; attempt += 1) {
-      await this.refresh(false);
-      if (this.snapshot?.agents.some((agent) => agent.pane_id === paneId)) {
-        return;
-      }
-      await delay(100);
-    }
-    throw new Error(`Herdr did not detect an agent in pane ${paneId}.`);
   }
 
   private currentWorkspace() {
@@ -933,21 +917,9 @@ class HerdrController implements vscode.Disposable {
     });
   }
 
-  private terminalName(target: HerdrTerminalTarget): string {
-    if (target.kind === "agent") {
-      return `Herdr: ${target.name}`;
-    }
+  private terminalName(): string {
     const session = vscode.workspace.getConfiguration("herdr").get<string>("session", "").trim();
     return session ? `${TERMINAL_NAME} (${session})` : TERMINAL_NAME;
-  }
-
-  private agentTerminalTarget(paneId: string): HerdrTerminalTarget {
-    const agent = this.snapshot?.agents.find((candidate) => candidate.pane_id === paneId);
-    return {
-      kind: "agent",
-      paneId,
-      name: agent ? agentDisplayName(agent) : paneId,
-    };
   }
 
   private terminalLocation(): HerdrTerminalLocation {
@@ -1015,22 +987,8 @@ function isTransientTerminal(terminal: vscode.Terminal): boolean {
   return "isTransient" in terminal.creationOptions && terminal.creationOptions.isTransient === true;
 }
 
-function terminalMatches(
-  terminal: vscode.Terminal,
-  expectedName: string,
-  expectedArgs: readonly string[],
-  expectedLocation: HerdrTerminalLocation,
-): boolean {
-  if (
-    terminal.name !== expectedName
-    || !isTransientTerminal(terminal)
-    || !terminalMatchesLocation(terminal, expectedLocation)
-    || !("shellArgs" in terminal.creationOptions)
-    || !Array.isArray(terminal.creationOptions.shellArgs)
-  ) {
-    return false;
-  }
-  const actualArgs = terminal.creationOptions.shellArgs;
-  return actualArgs.length === expectedArgs.length
-    && actualArgs.every((value, index) => value === expectedArgs[index]);
+function isOwnedHerdrTerminal(terminal: vscode.Terminal, expectedName: string): boolean {
+  return terminal.name === expectedName
+    && "shellPath" in terminal.creationOptions
+    && terminal.creationOptions.shellPath !== undefined;
 }
