@@ -297,7 +297,7 @@ class HerdrController implements vscode.Disposable {
       return;
     }
     if (!this.isCurrentRoot(root)) {
-      await this.publishAgentNavigation(node.agent.pane_id);
+      await this.publishAgentNavigation(node.workspace.workspace_id, node.agent.pane_id);
       await vscode.commands.executeCommand(
         "vscode.openFolder", this.workspaceUri(node.workspace.workspace_id, root), { forceNewWindow: true },
       );
@@ -512,9 +512,9 @@ class HerdrController implements vscode.Disposable {
     }
   }
 
-  private async publishAgentNavigation(paneId: string): Promise<void> {
+  private async publishAgentNavigation(workspaceId: string, paneId: string): Promise<void> {
     try {
-      await this.navigationIntents.publishAgent(paneId);
+      await this.navigationIntents.publishAgent(workspaceId, paneId);
       await this.client.focusAgent(paneId);
     } catch (error) {
       this.output.warn(`Could not publish agent navigation intent: ${errorMessage(error)}`);
@@ -562,11 +562,13 @@ class HerdrController implements vscode.Disposable {
         }
         await this.navigationIntents.acknowledge(intent);
         this.consumedNavigationIntents.add(intent.requestId);
+        this.output.debug(`Consuming Herdr navigation intent ${intent.requestId} (${intent.kind}).`);
         await this.closeCurrentWindowSpace(intent.workspaceId, association.root);
         return true;
       }
       await this.navigationIntents.acknowledge(intent);
       this.consumedNavigationIntents.add(intent.requestId);
+      this.output.debug(`Consuming Herdr navigation intent ${intent.requestId} (${intent.kind}).`);
       await vscode.commands.executeCommand("workbench.view.extension.herdr");
       await vscode.commands.executeCommand(intent.kind === "agent" ? "herdr.agents.focus" : "herdr.spaces.focus");
       if (intent.kind === "agent" || intent.kind === "attach") {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ConsumedNavigationIntents, findNavigationIntent, HerdrNavigationIntentStore, NAVIGATION_INTENT_TTL_MS } from "./navigationIntent";
+import { ConsumedNavigationIntents, findNavigationIntent, HerdrNavigationIntentStore } from "./navigationIntent";
 import type { HerdrSnapshot } from "./types";
 
 function snapshot(): HerdrSnapshot {
@@ -22,34 +22,24 @@ function snapshot(): HerdrSnapshot {
 
 test("finds an agent intent only in the target workspace", () => {
   const value = snapshot();
-  value.panes[1]!.tokens = { "vscode-navigation-intent": "request-2" };
+  value.workspaces[1]!.tokens = { "vscode-navigation-intent": "v1|request-2|a|w2:p1" };
   assert.equal(findNavigationIntent(value, "w1"), undefined);
   assert.deepEqual(findNavigationIntent(value, "w2"), {
     requestId: "request-2", workspaceId: "w2", kind: "agent", paneId: "w2:p1",
   });
 });
 
-test("prefers a pane intent over a workspace intent", () => {
+test("decodes a workspace intent from the single navigation slot", () => {
   const value = snapshot();
-  value.workspaces[0]!.tokens = { "vscode-navigation-intent": "space-request" };
-  value.panes[0]!.tokens = { "vscode-navigation-intent": "agent-request" };
-  assert.equal(findNavigationIntent(value, "w1")?.requestId, "agent-request");
-});
-
-test("falls back to the target workspace intent", () => {
-  const value = snapshot();
-  value.workspaces[0]!.tokens = { "vscode-navigation-intent": "space-request" };
+  value.workspaces[0]!.tokens = { "vscode-navigation-intent": "v1|space-request|w" };
   assert.deepEqual(findNavigationIntent(value, "w1"), {
     requestId: "space-request", workspaceId: "w1", kind: "workspace",
   });
 });
 
-test("an attach intent takes precedence over workspace focus", () => {
+test("decodes an attach intent from the single navigation slot", () => {
   const value = snapshot();
-  value.workspaces[0]!.tokens = {
-    "vscode-navigation-intent": "space-request",
-    "vscode-attach-intent": "attach-request",
-  };
+  value.workspaces[0]!.tokens = { "vscode-navigation-intent": "v1|attach-request|t" };
   assert.deepEqual(findNavigationIntent(value, "w1"), {
     requestId: "attach-request", workspaceId: "w1", kind: "attach",
   });
@@ -58,10 +48,9 @@ test("an attach intent takes precedence over workspace focus", () => {
 test("a close intent takes precedence over focus intents", () => {
   const value = snapshot();
   value.workspaces[0]!.tokens = {
-    "vscode-navigation-intent": "space-request",
+    "vscode-navigation-intent": "v1|space-request|w",
     "vscode-close-intent": "close-request",
   };
-  value.panes[0]!.tokens = { "vscode-navigation-intent": "agent-request" };
   assert.deepEqual(findNavigationIntent(value, "w1"), {
     requestId: "close-request", workspaceId: "w1", kind: "close",
   });
@@ -75,9 +64,41 @@ test("window presence is scoped to its workspace", () => {
   assert.equal(store.hasWindowPresence(value, "w2"), true);
 });
 
-test("consumed intent receipts suppress stale snapshots until their TTL expires", () => {
+test("all non-destructive navigation kinds publish to one replaceable token", async () => {
+  const writes: Array<{ workspaceId: string; key: string; value: string }> = [];
+  const client = {
+    setWorkspaceToken: async (workspaceId: string, _source: string, key: string, value: string) => {
+      writes.push({ workspaceId, key, value });
+    },
+  };
+  const store = new HerdrNavigationIntentStore(client as never);
+
+  await store.publishWorkspace("w1");
+  await store.publishAgent("w1", "w1:p1");
+  await store.publishAttach("w1");
+
+  assert.deepEqual(writes.map(({ workspaceId, key }) => ({ workspaceId, key })), [
+    { workspaceId: "w1", key: "vscode-navigation-intent" },
+    { workspaceId: "w1", key: "vscode-navigation-intent" },
+    { workspaceId: "w1", key: "vscode-navigation-intent" },
+  ]);
+  assert.match(writes[0]!.value, /^v1\|[^|]+\|w$/);
+  assert.match(writes[1]!.value, /^v1\|[^|]+\|a\|w1:p1$/);
+  assert.match(writes[2]!.value, /^v1\|[^|]+\|t$/);
+});
+
+test("consumed intent receipts do not become executable again with age", () => {
   const consumed = new ConsumedNavigationIntents();
-  consumed.add("request-1", 1_000);
-  assert.equal(consumed.has("request-1", 1_000 + NAVIGATION_INTENT_TTL_MS - 1), true);
-  assert.equal(consumed.has("request-1", 1_000 + NAVIGATION_INTENT_TTL_MS), false);
+  consumed.add("request-1");
+  assert.equal(consumed.has("request-1"), true);
+});
+
+test("consumed intent receipts retain a bounded recent history", () => {
+  const consumed = new ConsumedNavigationIntents();
+  for (let index = 0; index < 257; index += 1) {
+    consumed.add(`request-${index}`);
+  }
+  assert.equal(consumed.has("request-0"), false);
+  assert.equal(consumed.has("request-1"), true);
+  assert.equal(consumed.has("request-256"), true);
 });
