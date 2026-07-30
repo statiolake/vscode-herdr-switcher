@@ -8,7 +8,7 @@ Bring [Herdr](https://github.com/ogulcancelik/herdr) spaces and AI coding agents
 - Live agent status, Git branch names, and the active agent in the status bar.
 - An overall Herdr status item with links to every agent across all Spaces.
 - Click a Space to switch to its VS Code window without opening a terminal.
-- Click an Agent to switch windows, open a pinned Herdr terminal, and focus its pane.
+- Click an Agent to switch windows and focus its pane in either the full Herdr UI or a dedicated direct-attach terminal.
 - Use a Space's terminal button to attach from that Space's VS Code window.
 - Start Claude Code, Codex, or custom agents in dedicated Herdr tabs.
 - Close Spaces from the `…` menu, with a warning when non-shell processes are running.
@@ -41,6 +41,7 @@ Herdr remains the source of truth. Cross-window actions are delivered through sh
 - `herdr.refreshInterval`: live update interval in milliseconds
 - `herdr.createSpaceOnOpen`: automatically create or associate Spaces
 - `herdr.terminalLocation`: open Herdr in the Terminal view (`panel`) or as a pinned editor (`editor`)
+- `herdr.agentTerminalMode`: use the full Herdr UI (`herdr`, default) or a dedicated terminal per Agent pane (`direct`); restart the Extension Host after changing it
 - `herdr.agents`: agents available from the Add Agent picker
 - `herdr.defaultAgent`: agent launched by the `+` button
 

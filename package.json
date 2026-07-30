@@ -129,6 +129,17 @@
           "default": "panel",
           "description": "Where to open the interactive Herdr terminal."
         },
+        "herdr.agentTerminalMode": {
+          "type": "string",
+          "scope": "application",
+          "enum": ["herdr", "direct"],
+          "enumDescriptions": [
+            "Open the full Herdr interface and focus the selected Agent pane.",
+            "Attach a dedicated terminal directly to each selected Agent pane."
+          ],
+          "default": "herdr",
+          "description": "How Agent terminals are opened. Restart the Extension Host after changing this setting."
+        },
         "herdr.agents": {
           "type": "array",
           "scope": "application",
