@@ -2,14 +2,12 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { agentShellCommand, configuredAgents, type ConfiguredAgent } from "./agentConfiguration";
 import { agentDisplayName } from "./agentPresentation";
-import { AgentStatusBar } from "./agentStatusBar";
 import { decodeDevContainerHostPath } from "./devContainer";
 import { GitBranchProvider } from "./gitBranchProvider";
 import { HerdrClient, HerdrCommandError } from "./herdrClient";
 import {
   activeAgentForWorkspace,
   activeTreeSelection,
-  agentsForWorkspace,
   findWorkspaceForRoot,
   inferWorkspaceRoot,
   nonShellForegroundProcesses,
@@ -17,7 +15,6 @@ import {
   type SpaceBinding,
 } from "./model";
 import { ConsumedNavigationIntents, HerdrNavigationIntentStore } from "./navigationIntent";
-import { formatOutputPreview, type AgentOutputPreview } from "./outputPreview";
 import { OverallStatusBar } from "./overallStatusBar";
 import { RootLock } from "./rootLock";
 import { TerminalRegistry, type HerdrTerminalTarget } from "./terminalRegistry";
@@ -49,12 +46,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const spacesView = vscode.window.createTreeView("herdr.spaces", { treeDataProvider: spaces });
   const agentsView = vscode.window.createTreeView("herdr.agents", { treeDataProvider: agents });
   const controller = new HerdrController(context, store, output);
-  const status = new AgentStatusBar("herdr.openAgentByPane");
   const overallStatus = new OverallStatusBar();
-  const updateStatus = (snapshot: HerdrSnapshot | undefined) => {
-    status.update(controller.currentAgents(), (paneId) => controller.agentOutputPreview(paneId));
-    overallStatus.update(snapshot);
-  };
   const syncSelection = () => synchronizeTreeSelection(store, spaces, agents, spacesView, agentsView, output);
   context.subscriptions.push(
     output,
@@ -63,10 +55,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     agents,
     spacesView,
     agentsView,
-    status,
     overallStatus,
     store.onDidChange(() => { void syncSelection(); }),
-    controller.onDidRefresh(updateStatus),
+    controller.onDidRefresh((snapshot) => overallStatus.update(snapshot)),
     spacesView.onDidChangeVisibility(() => { void syncSelection(); }),
     agentsView.onDidChangeVisibility(() => { void syncSelection(); }),
     vscode.commands.registerCommand("herdr.refresh", () => controller.refresh(true)),
@@ -114,8 +105,6 @@ class HerdrController implements vscode.Disposable {
   private readonly agentTerminalMode: AgentTerminalMode;
   private serverStartAttempted = false;
   private readonly consumedNavigationIntents = new ConsumedNavigationIntents();
-  private readonly agentOutputRequests = new Map<string, Promise<AgentOutputPreview>>();
-  private readonly agentOutputErrors = new Map<string, string>();
   private readonly reportedSpaceCreationErrors = new Set<string>();
   private readonly reportedWorkspaceLocationErrors = new Set<string>();
   private readonly closingRoots = new Set<string>();
@@ -146,41 +135,6 @@ class HerdrController implements vscode.Disposable {
     return association && this.snapshot
       ? activeAgentForWorkspace(this.snapshot, association.workspace.workspace_id)
       : undefined;
-  }
-
-  currentAgents() {
-    const association = this.currentWorkspaceAssociation();
-    return association && this.snapshot
-      ? agentsForWorkspace(this.snapshot, association.workspace.workspace_id)
-      : [];
-  }
-
-  agentOutputPreview(paneId: string): Promise<AgentOutputPreview> {
-    const current = this.agentOutputRequests.get(paneId);
-    if (current) {
-      return current;
-    }
-    const request = this.client.readPaneOutput(paneId, 12)
-      .then((text) => {
-        this.agentOutputErrors.delete(paneId);
-        const preview = formatOutputPreview(text);
-        return preview ? { kind: "output" as const, text: preview } : { kind: "empty" as const };
-      })
-      .catch((error) => {
-        const message = errorMessage(error);
-        if (this.agentOutputErrors.get(paneId) !== message) {
-          this.agentOutputErrors.set(paneId, message);
-          this.output.debug(`Could not read output preview for ${paneId}: ${message}`);
-        }
-        return { kind: "error" as const };
-      })
-      .finally(() => {
-        if (this.agentOutputRequests.get(paneId) === request) {
-          this.agentOutputRequests.delete(paneId);
-        }
-      });
-    this.agentOutputRequests.set(paneId, request);
-    return request;
   }
 
   dispose(): void {

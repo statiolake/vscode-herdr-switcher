@@ -79,12 +79,6 @@ export class HerdrClient {
     return { ...result.process_info, foreground_processes: result.process_info.foreground_processes ?? [] };
   }
 
-  async readPaneOutput(paneId: string, lines: number): Promise<string> {
-    return this.runText([
-      "pane", "read", paneId, "--source", "visible", "--lines", String(lines),
-    ]);
-  }
-
   async renamePane(paneId: string, label: string): Promise<void> {
     await this.runVoid(["pane", "rename", paneId, label]);
   }
@@ -169,14 +163,6 @@ export class HerdrClient {
     if (response.error) {
       throw new HerdrCommandError(response.error.message, stderr, exitCode);
     }
-  }
-
-  private async runText(args: string[]): Promise<string> {
-    const { stdout, stderr, exitCode } = await run(this.options.executable, [...this.sessionArgs(), ...args]);
-    if (exitCode !== 0) {
-      throw new HerdrCommandError(stderr.trim() || `herdr exited with code ${exitCode}`, stderr, exitCode);
-    }
-    return stdout;
   }
 
   private sessionArgs(): string[] {
