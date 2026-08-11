@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { TextDecoder } from "node:util";
 import * as vscode from "vscode";
+import { terminalInputCommands } from "./terminalInput";
 
 export interface DirectTerminalOptions {
   executable: string;
@@ -14,6 +15,15 @@ interface TerminalFrameRecord {
   bytes?: string;
 }
 
+// `herdr terminal session control` forwards rendered ANSI frames and input
+// commands as JSON, but Herdr 0.8 does not expose its separate MouseCapture
+// server message through that JSON stream. Enable button/wheel reporting so
+// xterm.js reports scroll input to the pseudoterminal. Deliberately omit
+// motion/drag reporting: those events would reset Herdr's viewport and would
+// prevent VS Code's native text selection from working.
+const ENABLE_MOUSE_CAPTURE = "\u001b[?1000h\u001b[?1006h";
+const DISABLE_MOUSE_CAPTURE = "\u001b[?1006l\u001b[?1000l";
+
 /** A VS Code terminal backed by Herdr's terminal session control bridge. */
 export class HerdrDirectTerminal implements vscode.Pseudoterminal {
   private readonly writeEmitter = new vscode.EventEmitter<string>();
@@ -26,6 +36,7 @@ export class HerdrDirectTerminal implements vscode.Pseudoterminal {
   private closed = false;
   private closing = false;
   private stderr = "";
+  private mouseCaptureEnabled = false;
 
   readonly onDidWrite = this.writeEmitter.event;
   readonly onDidClose = this.closeEmitter.event;
@@ -44,6 +55,8 @@ export class HerdrDirectTerminal implements vscode.Pseudoterminal {
         stdio: ["pipe", "pipe", "pipe"],
       });
       this.child = child;
+      this.writeEmitter.fire(ENABLE_MOUSE_CAPTURE);
+      this.mouseCaptureEnabled = true;
       child.stdout.on("data", (chunk: Buffer | string) => this.handleOutput(chunk));
       child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
         this.stderr += chunk;
@@ -92,10 +105,16 @@ export class HerdrDirectTerminal implements vscode.Pseudoterminal {
     if (this.closed || this.closing || !data) {
       return;
     }
-    this.send({
-      type: "terminal.input",
-      bytes: Buffer.from(data, "utf8").toString("base64"),
-    });
+    for (const command of terminalInputCommands(data, { rows: this.dimensions?.rows })) {
+      if (command.kind === "input") {
+        this.send({
+          type: "terminal.input",
+          bytes: Buffer.from(command.data, "utf8").toString("base64"),
+        });
+      } else {
+        this.send(command.command);
+      }
+    }
   }
 
   setDimensions(dimensions: vscode.TerminalDimensions): void {
@@ -160,7 +179,7 @@ export class HerdrDirectTerminal implements vscode.Pseudoterminal {
     }
   }
 
-  private send(command: Record<string, unknown>): void {
+  private send(command: object): void {
     if (!this.child?.stdin.writable || this.closed) {
       return;
     }
@@ -188,6 +207,10 @@ export class HerdrDirectTerminal implements vscode.Pseudoterminal {
     const trailing = this.decoder.decode();
     if (trailing) {
       this.writeEmitter.fire(trailing);
+    }
+    if (this.mouseCaptureEnabled) {
+      this.writeEmitter.fire(DISABLE_MOUSE_CAPTURE);
+      this.mouseCaptureEnabled = false;
     }
     this.closeEmitter.fire();
     this.options.onClosed?.();
