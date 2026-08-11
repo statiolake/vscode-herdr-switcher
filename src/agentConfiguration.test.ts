@@ -11,6 +11,16 @@ test("configured agents reject malformed and duplicate entries", () => {
   ]), [{ name: "Claude Code", command: ["claude"] }]);
 });
 
+test("configured agents preserve an optional Herdr agent kind", () => {
+  assert.deepEqual(configuredAgents([
+    { name: "Claude Code", command: ["claude"], kind: " claude " },
+    { name: "Custom", command: ["my-agent"], kind: 42 },
+  ]), [
+    { name: "Claude Code", command: ["claude"], kind: "claude" },
+    { name: "Custom", command: ["my-agent"] },
+  ]);
+});
+
 test("agent argv is safely serialized for a POSIX shell", () => {
   assert.equal(shellCommand(["claude", "hello world", "it's"], "darwin"),
     `'claude' 'hello world' 'it'"'"'s'`);

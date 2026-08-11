@@ -12,6 +12,14 @@ export interface HerdrClientOptions {
   session?: string;
 }
 
+export interface HerdrServerStatus {
+  running: boolean;
+  socket: string;
+  version?: string | null;
+  protocol?: number | null;
+  session?: string | null;
+}
+
 export class HerdrCommandError extends Error {
   constructor(
     message: string,
@@ -28,6 +36,14 @@ export class HerdrClient {
   async snapshot(): Promise<HerdrSnapshot> {
     const result = await this.runJson<{ snapshot: HerdrSnapshot }>(["api", "snapshot"]);
     return result.snapshot;
+  }
+
+  async serverStatus(): Promise<HerdrServerStatus> {
+    const result = await this.runRawJson<HerdrServerStatus>(["status", "server", "--json"]);
+    if (typeof result.socket !== "string" || result.socket.trim() === "") {
+      throw new HerdrCommandError("herdr status did not report an API socket", "", 0);
+    }
+    return result;
   }
 
   createWorkspace(cwd: string, label: string): Promise<WorkspaceCreatedResult> {
@@ -101,6 +117,14 @@ export class HerdrClient {
     await this.runVoid(["tab", "close", tabId]);
   }
 
+  async startAgent(name: string, kind: string, paneId: string, args: readonly string[] = []): Promise<void> {
+    const command = ["agent", "start", name, "--kind", kind, "--pane", paneId];
+    if (args.length > 0) {
+      command.push("--", ...args);
+    }
+    await this.runJson<unknown>(command);
+  }
+
   async runPane(paneId: string, command: string): Promise<void> {
     await this.runVoid(["pane", "run", paneId, command]);
   }
@@ -111,6 +135,16 @@ export class HerdrClient {
 
   agentAttachArgs(target: string): string[] {
     return [...this.sessionArgs(), "agent", "attach", target, "--takeover"];
+  }
+
+  terminalSessionControlArgs(target: string, columns = 80, rows = 24): string[] {
+    return [
+      ...this.sessionArgs(),
+      "terminal", "session", "control", target,
+      "--takeover",
+      "--cols", String(Math.max(1, Math.floor(columns))),
+      "--rows", String(Math.max(1, Math.floor(rows))),
+    ];
   }
 
   startServer(): Promise<void> {
@@ -144,6 +178,18 @@ export class HerdrClient {
       throw new HerdrCommandError(response.error?.message ?? "herdr returned no result", stderr, exitCode);
     }
     return response.result;
+  }
+
+  private async runRawJson<T>(args: string[]): Promise<T> {
+    const { stdout, stderr, exitCode } = await run(this.options.executable, [...this.sessionArgs(), ...args]);
+    if (exitCode !== 0) {
+      throw new HerdrCommandError(stderr.trim() || `herdr exited with code ${exitCode}`, stderr, exitCode);
+    }
+    try {
+      return JSON.parse(stdout) as T;
+    } catch (error) {
+      throw new HerdrCommandError(`herdr returned invalid JSON: ${String(error)}`, stderr, exitCode);
+    }
   }
 
   private async runVoid(args: string[]): Promise<void> {

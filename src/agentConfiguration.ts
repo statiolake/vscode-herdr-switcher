@@ -1,6 +1,8 @@
 export interface ConfiguredAgent {
   name: string;
   command: string[];
+  /** Herdr's canonical agent kind, enabling the server-owned agent.start flow. */
+  kind?: string;
 }
 
 export function configuredAgents(value: unknown): ConfiguredAgent[] {
@@ -13,7 +15,7 @@ export function configuredAgents(value: unknown): ConfiguredAgent[] {
     if (!candidate || typeof candidate !== "object") {
       continue;
     }
-    const { name, command } = candidate as { name?: unknown; command?: unknown };
+    const { name, command, kind } = candidate as { name?: unknown; command?: unknown; kind?: unknown };
     const normalizedName = typeof name === "string" ? name.trim() : "";
     if (!normalizedName || seen.has(normalizedName) || !Array.isArray(command)) {
       continue;
@@ -25,7 +27,12 @@ export function configuredAgents(value: unknown): ConfiguredAgent[] {
       continue;
     }
     seen.add(normalizedName);
-    result.push({ name: normalizedName, command: [...normalizedCommand] });
+    const normalizedKind = typeof kind === "string" ? kind.trim() : "";
+    result.push({
+      name: normalizedName,
+      command: [...normalizedCommand],
+      ...(normalizedKind ? { kind: normalizedKind } : {}),
+    });
   }
   return result;
 }

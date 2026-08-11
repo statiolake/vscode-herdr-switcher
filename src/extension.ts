@@ -5,6 +5,8 @@ import { agentDisplayName } from "./agentPresentation";
 import { decodeDevContainerHostPath } from "./devContainer";
 import { GitBranchProvider } from "./gitBranchProvider";
 import { HerdrClient, HerdrCommandError } from "./herdrClient";
+import { HerdrDirectTerminal } from "./directTerminal";
+import { HerdrEventSubscriber } from "./herdrEvents";
 import {
   activeAgentForWorkspace,
   activeTreeSelection,
@@ -103,6 +105,10 @@ class HerdrController implements vscode.Disposable {
   private readonly terminalPreparations = new Map<string, Promise<vscode.Terminal>>();
   private readonly terminalCloseSubscription: vscode.Disposable;
   private readonly agentTerminalMode: AgentTerminalMode;
+  private eventSubscriber: HerdrEventSubscriber | undefined;
+  private eventStreamAvailable = false;
+  private eventStreamAttemptAt = 0;
+  private eventRefreshTimer: NodeJS.Timeout | undefined;
   private serverStartAttempted = false;
   private readonly consumedNavigationIntents = new ConsumedNavigationIntents();
   private readonly reportedSpaceCreationErrors = new Set<string>();
@@ -127,6 +133,7 @@ class HerdrController implements vscode.Disposable {
 
   async start(): Promise<void> {
     await this.handleWindowActivated();
+    await this.ensureEventStream();
     this.schedule();
   }
 
@@ -142,6 +149,10 @@ class HerdrController implements vscode.Disposable {
     if (this.timer) {
       clearTimeout(this.timer);
     }
+    if (this.eventRefreshTimer) {
+      clearTimeout(this.eventRefreshTimer);
+    }
+    this.eventSubscriber?.dispose();
     this.terminalCloseSubscription.dispose();
     this.refreshEmitter.dispose();
   }
@@ -149,6 +160,10 @@ class HerdrController implements vscode.Disposable {
   reconfigure(): void {
     this.client = this.createClient();
     this.navigationIntents = new HerdrNavigationIntentStore(this.client);
+    this.eventSubscriber?.dispose();
+    this.eventSubscriber = undefined;
+    this.eventStreamAvailable = false;
+    this.eventStreamAttemptAt = 0;
     this.serverStartAttempted = false;
     if (this.timer) {
       clearTimeout(this.timer);
@@ -182,6 +197,11 @@ class HerdrController implements vscode.Disposable {
       const branches = await this.gitBranches.forSnapshot(snapshot);
       this.snapshot = snapshot;
       this.store.setSnapshot(snapshot, branches);
+      if (this.eventSubscriber?.setPaneIds(snapshot.agents.map((agent) => agent.pane_id))) {
+        // A newly discovered pane needs its parameterized status subscription
+        // immediately; do not wait for the ordinary reconnect backoff.
+        this.eventStreamAttemptAt = 0;
+      }
       this.refreshEmitter.fire(snapshot);
       this.serverStartAttempted = false;
     } catch (error) {
@@ -560,6 +580,9 @@ class HerdrController implements vscode.Disposable {
   }
 
   private async prepareTerminalUnserialized(target: HerdrTerminalTarget): Promise<vscode.Terminal> {
+    if (target.kind === "agent" && this.agentTerminalMode === "direct") {
+      return this.prepareDirectTerminalUnserialized(target);
+    }
     const terminalLocation = this.terminalLocation();
     const config = vscode.workspace.getConfiguration("herdr");
     const executable = config.get("executable", "herdr");
@@ -605,6 +628,47 @@ class HerdrController implements vscode.Disposable {
       }
     }
     throw new Error(`Herdr terminal for ${name} closed while it was opening.`);
+  }
+
+  private async prepareDirectTerminalUnserialized(target: Extract<HerdrTerminalTarget, { kind: "agent" }>): Promise<vscode.Terminal> {
+    const terminalLocation = this.terminalLocation();
+    const tracked = this.terminals.get(target);
+    if (tracked) {
+      await this.showTerminal(tracked, terminalLocation);
+      if (this.terminals.isCurrent(target, tracked)) {
+        return tracked;
+      }
+    }
+
+    const config = vscode.workspace.getConfiguration("herdr");
+    const executable = config.get("executable", "herdr");
+    let created: vscode.Terminal | undefined;
+    const pty = new HerdrDirectTerminal({
+      executable,
+      args: (columns, rows) => this.client.terminalSessionControlArgs(target.paneId, columns, rows),
+      onClosed: () => {
+        if (created) {
+          this.terminals.remove(created);
+        }
+      },
+      onError: (message) => this.output.warn(`${this.terminalName(target)}: ${message}`),
+    });
+    created = vscode.window.createTerminal({
+      name: this.terminalName(target),
+      pty,
+      iconPath: new vscode.ThemeIcon("terminal"),
+      location: terminalLocation === "panel"
+        ? vscode.TerminalLocation.Panel
+        : { viewColumn: vscode.ViewColumn.Active, preserveFocus: false },
+      isTransient: true,
+    });
+    this.terminals.set(target, created);
+    await this.showTerminal(created, terminalLocation);
+    if (this.terminals.isCurrent(target, created)) {
+      return created;
+    }
+    created.dispose();
+    throw new Error(`Herdr terminal for ${this.terminalName(target)} closed while it was opening.`);
   }
 
   private async showTerminal(terminal: vscode.Terminal, location = this.terminalLocation()): Promise<void> {
@@ -670,7 +734,16 @@ class HerdrController implements vscode.Disposable {
           await this.client.focusWorkspace(workspace.workspace_id);
           const created = await this.client.createTab(workspace.workspace_id, root, agent.name);
           try {
-            await this.client.runPane(created.root_pane.pane_id, agentShellCommand(agent.command));
+            if (agent.kind) {
+              await this.client.startAgent(
+                uniqueHerdrAgentName(agent, created.root_pane.pane_id, this.snapshot?.agents.map((candidate) => candidate.name)),
+                agent.kind,
+                created.root_pane.pane_id,
+                agent.command.slice(1),
+              );
+            } else {
+              await this.client.runPane(created.root_pane.pane_id, agentShellCommand(agent.command));
+            }
           } catch (error) {
             try {
               await this.client.closeTab(created.tab.tab_id);
@@ -680,7 +753,6 @@ class HerdrController implements vscode.Disposable {
             throw error;
           }
           if (this.agentTerminalMode === "direct") {
-            await this.waitForAgent(created.root_pane.pane_id);
             await this.prepareTerminal({
               kind: "agent",
               paneId: created.root_pane.pane_id,
@@ -698,17 +770,6 @@ class HerdrController implements vscode.Disposable {
 
   private configuredAgentList(): ConfiguredAgent[] {
     return configuredAgents(vscode.workspace.getConfiguration("herdr").get("agents"));
-  }
-
-  private async waitForAgent(paneId: string): Promise<void> {
-    for (let attempt = 0; attempt < 50; attempt += 1) {
-      await this.refresh(false);
-      if (this.snapshot?.agents.some((agent) => agent.pane_id === paneId)) {
-        return;
-      }
-      await delay(100);
-    }
-    throw new Error(`Herdr did not detect an agent in pane ${paneId}.`);
   }
 
   private currentWorkspace() {
@@ -813,16 +874,74 @@ class HerdrController implements vscode.Disposable {
     }
   }
 
+  private async ensureEventStream(): Promise<void> {
+    if (this.disposed || this.eventStreamAvailable) {
+      return;
+    }
+    const now = Date.now();
+    if (now - this.eventStreamAttemptAt < 5_000) {
+      return;
+    }
+    this.eventStreamAttemptAt = now;
+    if (!this.eventSubscriber) {
+      this.eventSubscriber = new HerdrEventSubscriber(this.client, {
+        onEvent: () => this.scheduleEventRefresh(),
+        onConnected: () => {
+          this.eventStreamAvailable = true;
+          this.output.info("Connected to Herdr event stream");
+        },
+        onDisconnected: () => {
+          this.eventStreamAvailable = false;
+          this.eventStreamAttemptAt = 0;
+          this.scheduleEventRefresh();
+          this.output.debug("Herdr event stream disconnected; using fallback refresh until it reconnects.");
+        },
+      });
+      this.eventSubscriber.setPaneIds(this.snapshot?.agents.map((agent) => agent.pane_id) ?? []);
+    }
+    try {
+      await this.eventSubscriber.connectIfNeeded();
+      this.eventStreamAvailable = this.eventSubscriber.isConnected;
+    } catch (error) {
+      this.eventStreamAvailable = false;
+      this.output.debug(`Could not connect to Herdr event stream: ${errorMessage(error)}`);
+    }
+  }
+
+  private scheduleEventRefresh(): void {
+    if (this.disposed || this.eventRefreshTimer) {
+      return;
+    }
+    this.eventRefreshTimer = setTimeout(() => {
+      this.eventRefreshTimer = undefined;
+      void this.refreshAndReconcile().catch((error) => {
+        this.output.warn(`Event-triggered Herdr refresh failed: ${errorMessage(error)}`);
+      });
+    }, 50);
+  }
+
+  private async refreshAndReconcile(): Promise<void> {
+    await this.refresh(false);
+    await this.reconcileWorkspace();
+    await this.consumeNavigationIntent();
+    await this.ensureEventStream();
+  }
+
   private schedule(): void {
     if (this.disposed) {
       return;
     }
-    const interval = vscode.workspace.getConfiguration("herdr").get("refreshInterval", 1000);
-    this.timer = setTimeout(async () => {
-      await this.refresh(false);
-      await this.reconcileWorkspace();
-      await this.consumeNavigationIntent();
-      this.schedule();
+    const configuredInterval = vscode.workspace.getConfiguration("herdr").get("refreshInterval", 1000);
+    const interval = this.eventStreamAvailable
+      ? Math.max(5_000, configuredInterval * 10)
+      : configuredInterval;
+    this.timer = setTimeout(() => {
+      this.timer = undefined;
+      void this.refreshAndReconcile()
+        .catch((error) => {
+          this.output.warn(`Scheduled Herdr refresh failed: ${errorMessage(error)}`);
+        })
+        .finally(() => this.schedule());
     }, interval);
   }
 
@@ -1051,4 +1170,32 @@ function terminalMatches(
 
 function terminalTargetKey(target: HerdrTerminalTarget): string {
   return target.kind === "session" ? "session" : `agent:${target.paneId}`;
+}
+
+function uniqueHerdrAgentName(agent: ConfiguredAgent, paneId: string, existingNames: readonly (string | undefined)[] = []): string {
+  const base = slugifyHerdrAgentName(agent.name || agent.kind || agent.command[0] || "agent");
+  const existing = new Set(existingNames.filter((name): name is string => typeof name === "string"));
+  if (!existing.has(base)) {
+    return base;
+  }
+  const suffix = slugifyHerdrAgentName(paneId).slice(0, 20);
+  for (let attempt = 0; ; attempt += 1) {
+    const attemptSuffix = attempt === 0 ? suffix : `${suffix}-${attempt + 1}`;
+    const baseLength = Math.max(1, 31 - attemptSuffix.length);
+    const candidate = `${base.slice(0, baseLength)}-${attemptSuffix}`;
+    if (!existing.has(candidate)) {
+      return candidate;
+    }
+  }
+}
+
+function slugifyHerdrAgentName(value: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-_]+|[-_]+$/g, "");
+  const withLeadingLetter = /^[a-z]/.test(normalized) ? normalized : `agent-${normalized}`;
+  return (withLeadingLetter || "agent").slice(0, 32);
 }

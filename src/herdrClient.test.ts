@@ -12,3 +12,20 @@ test("agent attach arguments target one pane and take over input", () => {
     ["--session", "work", "agent", "attach", "w1:t1:p1", "--takeover"],
   );
 });
+
+test("terminal session control arguments target one pane with an initial size", () => {
+  assert.deepEqual(
+    new HerdrClient({ executable: "herdr" }).terminalSessionControlArgs("w1:p1", 120, 40),
+    [
+      "terminal", "session", "control", "w1:p1", "--takeover",
+      "--cols", "120", "--rows", "40",
+    ],
+  );
+  assert.deepEqual(
+    new HerdrClient({ executable: "herdr", session: "work" }).terminalSessionControlArgs("w1:p1"),
+    [
+      "--session", "work", "terminal", "session", "control", "w1:p1", "--takeover",
+      "--cols", "80", "--rows", "24",
+    ],
+  );
+});

@@ -110,7 +110,7 @@
           "default": 1000,
           "minimum": 250,
           "maximum": 10000,
-          "description": "Milliseconds between live sidebar snapshots."
+          "description": "Fallback snapshot interval in milliseconds when Herdr's event stream is unavailable."
         },
         "herdr.createSpaceOnOpen": {
           "type": "boolean",
@@ -144,8 +144,8 @@
           "type": "array",
           "scope": "application",
           "default": [
-            { "name": "Claude Code", "command": ["claude"] },
-            { "name": "Codex", "command": ["codex"] }
+            { "name": "Claude Code", "command": ["claude"], "kind": "claude" },
+            { "name": "Codex", "command": ["codex"], "kind": "codex" }
           ],
           "description": "Agents available from the Herdr Agents view.",
           "items": {
@@ -162,6 +162,10 @@
                 "minItems": 1,
                 "items": { "type": "string" },
                 "description": "Command and arguments to run in the new Herdr pane."
+              },
+              "kind": {
+                "type": "string",
+                "description": "Optional canonical Herdr agent kind. When set, Herdr's server-owned agent.start flow is used."
               }
             }
           }

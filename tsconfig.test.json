@@ -6,6 +6,6 @@
     "module": "Node16",
     "noEmit": false
   },
-  "include": ["src/**/*.test.ts", "src/agentConfiguration.ts", "src/agentPresentation.ts", "src/devContainer.ts", "src/model.ts", "src/navigationIntent.ts", "src/rootLock.ts", "src/snapshotView.ts", "src/terminalRegistry.ts", "src/herdrClient.ts", "src/types.ts"],
+  "include": ["src/**/*.test.ts", "src/agentConfiguration.ts", "src/agentPresentation.ts", "src/devContainer.ts", "src/herdrEvents.ts", "src/model.ts", "src/navigationIntent.ts", "src/rootLock.ts", "src/snapshotView.ts", "src/terminalRegistry.ts", "src/herdrClient.ts", "src/types.ts"],
   "exclude": []
 }

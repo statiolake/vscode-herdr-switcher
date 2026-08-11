@@ -9,6 +9,7 @@ Bring [Herdr](https://github.com/ogulcancelik/herdr) spaces and AI coding agents
 - An overall Herdr status item with links to every agent across all Spaces.
 - Click a Space to switch to its VS Code window without opening a terminal.
 - Click an Agent to switch windows and focus its pane in either the full Herdr UI or a dedicated direct-attach terminal.
+- Direct Agent terminals use Herdr's session-control bridge, so VS Code owns each terminal and no Herdr `Ctrl-B` prefix is required.
 - Use a Space's terminal button to attach from that Space's VS Code window.
 - Start Claude Code, Codex, or custom agents in dedicated Herdr tabs.
 - Close Spaces from the `…` menu, with a warning when non-shell processes are running.
@@ -17,7 +18,7 @@ Bring [Herdr](https://github.com/ogulcancelik/herdr) spaces and AI coding agents
 ## Requirements
 
 - VS Code 1.96 or later
-- Herdr 0.7.5 or later, available as `herdr` on `PATH`
+- Herdr 0.8.0 or later, available as `herdr` on `PATH`
 
 If Herdr is installed elsewhere, set `herdr.executable` to its path.
 
@@ -38,10 +39,10 @@ Herdr remains the source of truth. Cross-window actions are delivered through sh
 
 - `herdr.executable`: Herdr executable path
 - `herdr.session`: optional named Herdr session
-- `herdr.refreshInterval`: live update interval in milliseconds
+- `herdr.refreshInterval`: fallback snapshot interval in milliseconds when Herdr's event stream is unavailable
 - `herdr.createSpaceOnOpen`: automatically create or associate Spaces
 - `herdr.terminalLocation`: open Herdr in the Terminal view (`panel`) or as a pinned editor (`editor`)
-- `herdr.agentTerminalMode`: use the full Herdr UI (`herdr`, default) or a dedicated terminal per Agent pane (`direct`); restart the Extension Host after changing it
+- `herdr.agentTerminalMode`: use the full Herdr UI (`herdr`, default) or a dedicated `terminal session control` terminal per Agent pane (`direct`); restart the Extension Host after changing it
 - `herdr.agents`: agents available from the Add Agent picker
 - `herdr.defaultAgent`: agent launched by the `+` button
 
@@ -54,8 +55,8 @@ Herdr follows it.
 ```json
 {
   "herdr.agents": [
-    { "name": "Claude Code", "command": ["claude"] },
-    { "name": "Codex", "command": ["codex"] }
+    { "name": "Claude Code", "command": ["claude"], "kind": "claude" },
+    { "name": "Codex", "command": ["codex"], "kind": "codex" }
   ],
   "herdr.defaultAgent": "Claude Code"
 }
