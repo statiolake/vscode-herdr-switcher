@@ -108,8 +108,9 @@ export function adjacentAgent(
     return undefined;
   }
 
-  const focusedIndex = snapshot.focused_pane_id
-    ? ordered.findIndex((agent) => agent.pane_id === snapshot.focused_pane_id)
+  const activeAgent = focusedAgentInSnapshot(snapshot);
+  const focusedIndex = activeAgent
+    ? ordered.findIndex((agent) => agent.pane_id === activeAgent.pane_id)
     : -1;
   const focusedAgent = focusedIndex >= 0 ? ordered[focusedIndex] : undefined;
   if (focusedAgent && (!currentWorkspaceId || focusedAgent.workspace_id === currentWorkspaceId)) {
@@ -121,6 +122,13 @@ export function adjacentAgent(
     ? ordered.filter((agent) => agent.workspace_id === currentWorkspaceId)
     : ordered;
   return direction === "next" ? scoped[0] : scoped[scoped.length - 1];
+}
+
+function focusedAgentInSnapshot(snapshot: HerdrSnapshot): HerdrAgent | undefined {
+  if (snapshot.focused_pane_id !== undefined) {
+    return snapshot.agents.find((agent) => agent.pane_id === snapshot.focused_pane_id);
+  }
+  return snapshot.agents.find((agent) => agent.focused);
 }
 
 export function activeAgentForWorkspace(snapshot: HerdrSnapshot, workspaceId: string): HerdrAgent | undefined {

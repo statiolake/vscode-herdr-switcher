@@ -60,7 +60,25 @@ test("agents are displayed in workspace, tab, and pane order", () => {
 
 test("agent navigation follows the global display order and wraps", () => {
   const value = structuredClone(snapshot);
+  value.panes.push({ pane_id: "w2:p1", workspace_id: "w2", tab_id: "w2:t1" });
+  value.agents.push({
+    terminal_id: "t3",
+    agent_status: "idle",
+    workspace_id: "w2",
+    tab_id: "w2:t1",
+    pane_id: "w2:p1",
+    focused: false,
+  });
   value.focused_pane_id = "w1:p1";
+  assert.equal(adjacentAgent(value, "w1", "next")?.pane_id, "w1:p2");
+  assert.equal(adjacentAgent(value, "w1", "previous")?.pane_id, "w2:p1");
+});
+
+test("agent navigation uses an agent focus when the top-level pane focus is absent", () => {
+  const value = structuredClone(snapshot);
+  value.focused_pane_id = undefined;
+  value.agents[0]!.focused = false;
+  value.agents[1]!.focused = true;
   assert.equal(adjacentAgent(value, "w1", "next")?.pane_id, "w1:p2");
   assert.equal(adjacentAgent(value, "w1", "previous")?.pane_id, "w1:p2");
 });
