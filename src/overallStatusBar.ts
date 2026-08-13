@@ -67,6 +67,7 @@ function overallTooltip(snapshot: HerdrSnapshot): vscode.MarkdownString {
   const tooltip = new vscode.MarkdownString();
   tooltip.isTrusted = { enabledCommands: [OPEN_AGENT_COMMAND] };
   tooltip.supportThemeIcons = true;
+  tooltip.supportHtml = true;
   const agents = [...snapshot.agents].sort((left, right) => {
     const leftWorkspace = snapshot.workspaces.find((workspace) => workspace.workspace_id === left.workspace_id);
     const rightWorkspace = snapshot.workspaces.find((workspace) => workspace.workspace_id === right.workspace_id);
@@ -78,24 +79,37 @@ function overallTooltip(snapshot: HerdrSnapshot): vscode.MarkdownString {
     tooltip.appendText("No agents");
     return tooltip;
   }
-  for (const agent of agents) {
+  tooltip.appendMarkdown(agents.map((agent) => {
     const workspace = snapshot.workspaces.find((candidate) => candidate.workspace_id === agent.workspace_id);
     const name = agentDisplayName(agent);
     const description = agentDescription(snapshot, agent);
-    const icon = agentStatusPresentation(agent.agent_status).icon;
+    const statusPresentation = agentStatusPresentation(agent.agent_status);
+    const icon = statusPresentation.color
+      ? `<span style="color:${themeColorVariable(statusPresentation.color)};">$(${statusPresentation.icon})</span>`
+      : `$(${statusPresentation.icon})`;
     const command = `command:${OPEN_AGENT_COMMAND}?${encodeURIComponent(JSON.stringify([agent.pane_id]))}`;
-    tooltip.appendMarkdown(
-      `- $(${icon}) ${escapeMarkdown(workspace?.label ?? agent.workspace_id)} `
-      + `[${escapeMarkdown(description)}](${command} "Open ${escapeTitle(name)}")\n`,
-    );
-  }
+    const workspaceLabel = escapeMarkdown(workspace?.label ?? agent.workspace_id);
+    const descriptionLabel = `<span style="color:var(--vscode-descriptionForeground);">${escapeMarkdown(description)}</span>`;
+    const row = `${icon} ${workspaceLabel} ${descriptionLabel}`;
+    return `<a href="${escapeAttribute(command)}" title="Open ${escapeAttribute(name)}">`
+      + `<span style="color:var(--vscode-foreground);">${row}</span></a>`;
+  }).join("<br>\n"));
   return tooltip;
 }
 
-function escapeMarkdown(value: string): string {
-  return value.replace(/[\\`*_[\]()<>]/g, "\\$&");
+function themeColorVariable(color: string): string {
+  return `var(--vscode-${color.replaceAll(".", "-")})`;
 }
 
-function escapeTitle(value: string): string {
-  return value.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"");
+function escapeMarkdown(value: string): string {
+  return value.replaceAll("&", "&amp;").replace(/[\\`*_[\]()<>]/g, "\\$&");
+}
+
+function escapeAttribute(value: string): string {
+  return value.replace(/[&<>\"]/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+  })[character] ?? character);
 }
