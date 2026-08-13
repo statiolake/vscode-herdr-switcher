@@ -2,7 +2,7 @@
   "name": "vscode-herdr-switcher",
   "displayName": "Herdr Switcher",
   "description": "Monitor Herdr spaces and AI coding agents, switch project windows, and focus active agents from VS Code.",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "publisher": "statiolake",
   "repository": {
     "type": "git",
