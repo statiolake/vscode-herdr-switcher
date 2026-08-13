@@ -99,6 +99,10 @@ export class HerdrClient {
     await this.runVoid(["pane", "rename", paneId, label]);
   }
 
+  async renameTab(tabId: string, label: string): Promise<void> {
+    await this.runVoid(["tab", "rename", tabId, label]);
+  }
+
   async closePane(paneId: string): Promise<void> {
     await this.runVoid(["pane", "close", paneId]);
   }
@@ -107,10 +111,13 @@ export class HerdrClient {
     await this.runVoid(["workspace", "close", workspaceId]);
   }
 
-  createTab(workspaceId: string, cwd: string, label: string): Promise<TabCreatedResult> {
-    return this.runJson<TabCreatedResult>([
-      "tab", "create", "--workspace", workspaceId, "--cwd", cwd, "--label", label, "--focus",
-    ]);
+  createTab(workspaceId: string, cwd: string, label?: string): Promise<TabCreatedResult> {
+    const args = ["tab", "create", "--workspace", workspaceId, "--cwd", cwd];
+    if (label !== undefined) {
+      args.push("--label", label);
+    }
+    args.push("--focus");
+    return this.runJson<TabCreatedResult>(args);
   }
 
   async closeTab(tabId: string): Promise<void> {

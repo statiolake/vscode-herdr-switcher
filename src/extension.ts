@@ -66,6 +66,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("herdr.openSpace", (node: SpaceNode) => controller.openSpace(node)),
     vscode.commands.registerCommand("herdr.openAgent", (node: AgentNode) => controller.openAgent(node)),
     vscode.commands.registerCommand("herdr.renameAgent", (node: AgentNode) => controller.renameAgent(node)),
+    vscode.commands.registerCommand("herdr.renameTab", (node: AgentNode) => controller.renameTab(node)),
     vscode.commands.registerCommand("herdr.closeAgent", (node: AgentNode) => controller.closeAgent(node)),
     vscode.commands.registerCommand("herdr.openActiveAgent", () => controller.openActiveAgent()),
     vscode.commands.registerCommand("herdr.openAgentByPane", (paneId: string) => controller.openAgentByPane(paneId)),
@@ -301,6 +302,30 @@ class HerdrController implements vscode.Disposable {
       await this.refresh(false);
     } catch (error) {
       void vscode.window.showErrorMessage(`Could not rename Herdr agent: ${errorMessage(error)}`);
+    }
+  }
+
+  async renameTab(node: AgentNode): Promise<void> {
+    const tab = this.snapshot?.tabs.find((candidate) => candidate.tab_id === node.agent.tab_id);
+    if (!tab) {
+      void vscode.window.showWarningMessage(`Could not find the Herdr tab for ${agentDisplayName(node.agent)}.`);
+      return;
+    }
+    const name = await vscode.window.showInputBox({
+      title: "Rename Herdr Tab",
+      prompt: `Enter a name for the tab containing ${agentDisplayName(node.agent)}`,
+      value: tab.label,
+      valueSelection: [0, tab.label.length],
+      validateInput: (value) => value.trim() ? undefined : "Tab name cannot be empty.",
+    });
+    if (name === undefined || name.trim() === tab.label) {
+      return;
+    }
+    try {
+      await this.client.renameTab(tab.tab_id, name.trim());
+      await this.refresh(false);
+    } catch (error) {
+      void vscode.window.showErrorMessage(`Could not rename Herdr tab: ${errorMessage(error)}`);
     }
   }
 
@@ -732,7 +757,7 @@ class HerdrController implements vscode.Disposable {
             await this.prepareTerminal();
           }
           await this.client.focusWorkspace(workspace.workspace_id);
-          const created = await this.client.createTab(workspace.workspace_id, root, agent.name);
+          const created = await this.client.createTab(workspace.workspace_id, root);
           try {
             if (agent.kind) {
               await this.client.startAgent(

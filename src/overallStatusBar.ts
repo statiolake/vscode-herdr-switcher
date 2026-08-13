@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import {
+  agentDescription,
   agentDisplayName,
   agentStatusPresentation,
   overallAgentStatus,
@@ -25,9 +26,8 @@ export class OverallStatusBar implements vscode.Disposable {
         return [
           agent.pane_id,
           agent.agent_status,
-          agentDisplayName(agent),
           workspace?.label ?? agent.workspace_id,
-          agent.state_labels?.[agent.agent_status] ?? agent.agent_status,
+          agentDescription(snapshot, agent),
         ];
       })
       : null);
@@ -67,7 +67,6 @@ function overallTooltip(snapshot: HerdrSnapshot): vscode.MarkdownString {
   const tooltip = new vscode.MarkdownString();
   tooltip.isTrusted = { enabledCommands: [OPEN_AGENT_COMMAND] };
   tooltip.supportThemeIcons = true;
-  tooltip.appendMarkdown("### Herdr agents\n\n");
   const agents = [...snapshot.agents].sort((left, right) => {
     const leftWorkspace = snapshot.workspaces.find((workspace) => workspace.workspace_id === left.workspace_id);
     const rightWorkspace = snapshot.workspaces.find((workspace) => workspace.workspace_id === right.workspace_id);
@@ -82,12 +81,12 @@ function overallTooltip(snapshot: HerdrSnapshot): vscode.MarkdownString {
   for (const agent of agents) {
     const workspace = snapshot.workspaces.find((candidate) => candidate.workspace_id === agent.workspace_id);
     const name = agentDisplayName(agent);
-    const state = agent.state_labels?.[agent.agent_status] ?? agent.agent_status;
+    const description = agentDescription(snapshot, agent);
     const icon = agentStatusPresentation(agent.agent_status).icon;
     const command = `command:${OPEN_AGENT_COMMAND}?${encodeURIComponent(JSON.stringify([agent.pane_id]))}`;
     tooltip.appendMarkdown(
-      `- [$(${icon}) ${escapeMarkdown(name)}](${command} "Open ${escapeTitle(name)}")`
-      + ` — ${escapeMarkdown(workspace?.label ?? agent.workspace_id)} · ${escapeMarkdown(state)}\n`,
+      `- $(${icon}) ${escapeMarkdown(workspace?.label ?? agent.workspace_id)} `
+      + `[${escapeMarkdown(description)}](${command} "Open ${escapeTitle(name)}")\n`,
     );
   }
   return tooltip;

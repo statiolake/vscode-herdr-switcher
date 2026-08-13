@@ -60,6 +60,11 @@
         "icon": "$(edit)"
       },
       {
+        "command": "herdr.renameTab",
+        "title": "Herdr: Rename Tab...",
+        "icon": "$(edit)"
+      },
+      {
         "command": "herdr.closeAgent",
         "title": "Herdr: Close Agent",
         "icon": "$(trash)"
@@ -229,9 +234,14 @@
           "group": "herdr@1"
         },
         {
-          "command": "herdr.closeAgent",
+          "command": "herdr.renameTab",
           "when": "view == herdr.agents && viewItem == herdrAgent",
           "group": "herdr@2"
+        },
+        {
+          "command": "herdr.closeAgent",
+          "when": "view == herdr.agents && viewItem == herdrAgent",
+          "group": "herdr@3"
         }
       ]
     }

@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { agentDisplayName, agentStatusPresentation } from "./agentPresentation";
+import { agentDescription, agentStatusPresentation } from "./agentPresentation";
 import { agentsInDisplayOrder, inferWorkspaceRoot } from "./model";
 import { snapshotViewKey } from "./snapshotView";
 import type { AgentStatus, HerdrAgent, HerdrSnapshot, HerdrWorkspace } from "./types";
@@ -147,15 +147,11 @@ export class AgentsTreeProvider implements vscode.TreeDataProvider<AgentTreeNode
     if (node.kind === "message") {
       return messageItem(node);
     }
-    const agentName = agentDisplayName(node.agent);
-    const tab = this.store.snapshot?.tabs.find((candidate) => candidate.tab_id === node.agent.tab_id);
-    const primaryLabel = tab && (tab.label !== "1" || node.workspace.tab_count > 1)
-      ? `${node.workspace.label} / ${tab.label}`
-      : node.workspace.label;
-    const item = new vscode.TreeItem(primaryLabel, vscode.TreeItemCollapsibleState.None);
+    const item = new vscode.TreeItem(node.workspace.label, vscode.TreeItemCollapsibleState.None);
     item.id = `agent:${node.agent.terminal_id}:${selectionGeneration(this.store.snapshot)}`;
-    item.description = agentName;
+    item.description = agentDescription(this.store.snapshot, node.agent);
     item.iconPath = agentStatusIcon(node.agent.agent_status);
+    const agentName = agentDescription(this.store.snapshot, node.agent);
     const stateLabel = node.agent.state_labels?.[node.agent.agent_status] ?? node.agent.agent_status;
     item.tooltip = `${agentName}\n${node.agent.pane_id} · ${node.workspace.label}\n${stateLabel}`;
     item.contextValue = "herdrAgent";
