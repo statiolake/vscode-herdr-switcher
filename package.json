@@ -219,7 +219,7 @@
       ],
       "view/item/context": [
         {
-          "command": "herdr.attachSpace",
+          "command": "herdr.closeSpace",
           "when": "view == herdr.spaces && viewItem == herdrSpace",
           "group": "inline@1"
         },
