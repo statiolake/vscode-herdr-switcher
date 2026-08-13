@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { agentDescription, overallAgentStatus } from "./agentPresentation";
+import { agentDescription, agentStatusPresentation, overallAgentStatus } from "./agentPresentation";
 import type { HerdrAgent, HerdrSnapshot } from "./types";
 
 const agent = { tab_id: "tab-1", pane_id: "pane-1", name: "Claude" } as HerdrAgent;
@@ -16,6 +16,14 @@ test("overall status shows working when no completed agent is unseen", () => {
 test("overall status is idle when every agent is acknowledged", () => {
   assert.equal(overallAgentStatus(["idle", "idle"]), "idle");
   assert.equal(overallAgentStatus([]), "idle");
+});
+
+test("status presentation keeps every state recognizable without color", () => {
+  const statuses = ["blocked", "working", "done", "idle", "unknown"] as const;
+  const icons = statuses.map((status) => agentStatusPresentation(status).icon);
+
+  assert.deepEqual(icons, ["warning", "loading~spin", "circle-filled", "check", "circle-outline"]);
+  assert.equal(new Set(icons).size, statuses.length);
 });
 
 test("agent descriptions omit auto-numbered tabs", () => {

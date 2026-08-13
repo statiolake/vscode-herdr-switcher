@@ -82,7 +82,7 @@ export class SpacesTreeProvider implements vscode.TreeDataProvider<SpaceTreeNode
     const item = new vscode.TreeItem(node.workspace.label, vscode.TreeItemCollapsibleState.None);
     item.id = `space:${node.workspace.workspace_id}:${selectionGeneration(this.store.snapshot)}`;
     item.description = this.store.branches.get(node.workspace.workspace_id);
-    item.iconPath = spaceStatusIcon(node.workspace.agent_status);
+    item.iconPath = statusIcon(node.workspace.agent_status);
     item.tooltip = node.root
       ? `${node.root}\n${node.workspace.workspace_id} · ${node.workspace.agent_status}`
       : `${node.workspace.workspace_id} · ${node.workspace.agent_status}\nNo folder association is available`;
@@ -150,7 +150,7 @@ export class AgentsTreeProvider implements vscode.TreeDataProvider<AgentTreeNode
     const item = new vscode.TreeItem(node.workspace.label, vscode.TreeItemCollapsibleState.None);
     item.id = `agent:${node.agent.terminal_id}:${selectionGeneration(this.store.snapshot)}`;
     item.description = agentDescription(this.store.snapshot, node.agent);
-    item.iconPath = agentStatusIcon(node.agent.agent_status);
+    item.iconPath = statusIcon(node.agent.agent_status);
     const agentName = agentDescription(this.store.snapshot, node.agent);
     const stateLabel = node.agent.state_labels?.[node.agent.agent_status] ?? node.agent.agent_status;
     item.tooltip = `${agentName}\n${node.agent.pane_id} · ${node.workspace.label}\n${stateLabel}`;
@@ -220,20 +220,10 @@ function messageItem(node: MessageNode): vscode.TreeItem {
   return item;
 }
 
-function agentStatusIcon(status: AgentStatus): vscode.ThemeIcon {
+function statusIcon(status: AgentStatus): vscode.ThemeIcon {
   const presentation = agentStatusPresentation(status);
   return new vscode.ThemeIcon(
     presentation.icon,
     presentation.color ? new vscode.ThemeColor(presentation.color) : undefined,
   );
-}
-
-function spaceStatusIcon(status: AgentStatus): vscode.ThemeIcon {
-  switch (status) {
-    case "blocked": return new vscode.ThemeIcon("circle-filled", new vscode.ThemeColor("testing.iconFailed"));
-    case "working": return new vscode.ThemeIcon("circle-filled", new vscode.ThemeColor("charts.yellow"));
-    case "done": return new vscode.ThemeIcon("circle-filled", new vscode.ThemeColor("charts.blue"));
-    case "idle": return new vscode.ThemeIcon("circle-outline", new vscode.ThemeColor("testing.iconPassed"));
-    case "unknown": return new vscode.ThemeIcon("circle-small");
-  }
 }
