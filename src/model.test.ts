@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activeAgentForWorkspace, activeTreeSelection, agentsForWorkspace, agentsInDisplayOrder, findWorkspaceForRoot, inferWorkspaceRoot, nonShellForegroundProcesses, normalizeRoot } from "./model";
+import { activeAgentForWorkspace, activeTreeSelection, adjacentAgent, adjacentWorkspace, agentsForWorkspace, agentsInDisplayOrder, findWorkspaceForRoot, inferWorkspaceRoot, nonShellForegroundProcesses, normalizeRoot } from "./model";
 import type { HerdrSnapshot } from "./types";
 
 const snapshot: HerdrSnapshot = {
@@ -56,6 +56,33 @@ test("agents are displayed in workspace, tab, and pane order", () => {
     agentsInDisplayOrder(value).map((agent) => agent.pane_id),
     ["w1:p2", "w1:p1"],
   );
+});
+
+test("agent navigation follows the global display order and wraps", () => {
+  const value = structuredClone(snapshot);
+  value.focused_pane_id = "w1:p1";
+  assert.equal(adjacentAgent(value, "w1", "next")?.pane_id, "w1:p2");
+  assert.equal(adjacentAgent(value, "w1", "previous")?.pane_id, "w1:p2");
+});
+
+test("agent navigation starts at the current space when focus is absent", () => {
+  const value = structuredClone(snapshot);
+  value.focused_pane_id = "w1:p3";
+  value.panes.push({ pane_id: "w1:p3", workspace_id: "w1", tab_id: "w1:t1" });
+  assert.equal(adjacentAgent(value, "w1", "next")?.pane_id, "w1:p1");
+  assert.equal(adjacentAgent(value, "w1", "previous")?.pane_id, "w1:p2");
+});
+
+test("space navigation follows workspace order and wraps", () => {
+  assert.equal(adjacentWorkspace(snapshot, "w1", "next")?.workspace_id, "w2");
+  assert.equal(adjacentWorkspace(snapshot, "w1", "previous")?.workspace_id, "w2");
+});
+
+test("space navigation falls back to Herdr focus when no folder is associated", () => {
+  const value = structuredClone(snapshot);
+  value.focused_workspace_id = "w2";
+  assert.equal(adjacentWorkspace(value, undefined, "next")?.workspace_id, "w1");
+  assert.equal(adjacentWorkspace(value, undefined, "previous")?.workspace_id, "w1");
 });
 
 test("normalization removes trailing separators", () => {

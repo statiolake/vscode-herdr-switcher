@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { agentDescription, agentStatusPresentation } from "./agentPresentation";
-import { agentsInDisplayOrder, inferWorkspaceRoot } from "./model";
+import { agentsInDisplayOrder, inferWorkspaceRoot, workspacesInDisplayOrder } from "./model";
 import { snapshotViewKey } from "./snapshotView";
 import type { AgentStatus, HerdrAgent, HerdrSnapshot, HerdrWorkspace } from "./types";
 
@@ -113,8 +113,7 @@ export class SpacesTreeProvider implements vscode.TreeDataProvider<SpaceTreeNode
   private rebuildNodes(): void {
     const snapshot = this.store.snapshot;
     this.nodes = snapshot
-      ? [...snapshot.workspaces]
-        .sort((left, right) => left.number - right.number)
+      ? workspacesInDisplayOrder(snapshot)
         .map((workspace) => ({
           kind: "space" as const,
           workspace,

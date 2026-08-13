@@ -50,9 +50,25 @@
         "icon": "$(folder-opened)"
       },
       {
+        "command": "herdr.nextSpace",
+        "title": "Herdr: Next Space"
+      },
+      {
+        "command": "herdr.previousSpace",
+        "title": "Herdr: Previous Space"
+      },
+      {
         "command": "herdr.openAgent",
         "title": "Herdr: Open Agent",
         "icon": "$(person)"
+      },
+      {
+        "command": "herdr.nextAgent",
+        "title": "Herdr: Next Agent"
+      },
+      {
+        "command": "herdr.previousAgent",
+        "title": "Herdr: Previous Agent"
       },
       {
         "command": "herdr.renameAgent",

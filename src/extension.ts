@@ -10,11 +10,15 @@ import { HerdrEventSubscriber } from "./herdrEvents";
 import {
   activeAgentForWorkspace,
   activeTreeSelection,
+  adjacentAgent,
+  adjacentWorkspace,
   findWorkspaceForRoot,
   inferWorkspaceRoot,
   nonShellForegroundProcesses,
   normalizeRoot,
+  type AgentNavigationDirection,
   type SpaceBinding,
+  type WorkspaceNavigationDirection,
 } from "./model";
 import { ConsumedNavigationIntents, HerdrNavigationIntentStore } from "./navigationIntent";
 import { OverallStatusBar } from "./overallStatusBar";
@@ -64,7 +68,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     agentsView.onDidChangeVisibility(() => { void syncSelection(); }),
     vscode.commands.registerCommand("herdr.refresh", () => controller.refresh(true)),
     vscode.commands.registerCommand("herdr.openSpace", (node: SpaceNode) => controller.openSpace(node)),
+    vscode.commands.registerCommand("herdr.nextSpace", () => controller.nextSpace()),
+    vscode.commands.registerCommand("herdr.previousSpace", () => controller.previousSpace()),
     vscode.commands.registerCommand("herdr.openAgent", (node: AgentNode) => controller.openAgent(node)),
+    vscode.commands.registerCommand("herdr.nextAgent", () => controller.nextAgent()),
+    vscode.commands.registerCommand("herdr.previousAgent", () => controller.previousAgent()),
     vscode.commands.registerCommand("herdr.renameAgent", (node: AgentNode) => controller.renameAgent(node)),
     vscode.commands.registerCommand("herdr.renameTab", (node: AgentNode) => controller.renameTab(node)),
     vscode.commands.registerCommand("herdr.closeAgent", (node: AgentNode) => controller.closeAgent(node)),
@@ -364,6 +372,62 @@ class HerdrController implements vscode.Disposable {
       workspace,
       root: inferWorkspaceRoot(this.snapshot, workspace),
     });
+  }
+
+  async nextAgent(): Promise<void> {
+    await this.moveAgent("next");
+  }
+
+  async previousAgent(): Promise<void> {
+    await this.moveAgent("previous");
+  }
+
+  async nextSpace(): Promise<void> {
+    await this.moveSpace("next");
+  }
+
+  async previousSpace(): Promise<void> {
+    await this.moveSpace("previous");
+  }
+
+  private async moveAgent(direction: AgentNavigationDirection): Promise<void> {
+    await this.refresh(false);
+    if (!this.snapshot) {
+      return;
+    }
+    const currentWorkspace = this.currentWorkspace();
+    const agent = adjacentAgent(this.snapshot, currentWorkspace?.workspace_id, direction);
+    if (!agent) {
+      return;
+    }
+    try {
+      await this.openAgentByPane(agent.pane_id);
+    } catch (error) {
+      const label = direction === "next" ? "next" : "previous";
+      void vscode.window.showErrorMessage(`Could not open ${label} Herdr agent: ${errorMessage(error)}`);
+    }
+  }
+
+  private async moveSpace(direction: WorkspaceNavigationDirection): Promise<void> {
+    await this.refresh(false);
+    if (!this.snapshot) {
+      return;
+    }
+    const currentWorkspace = this.currentWorkspace();
+    const workspace = adjacentWorkspace(this.snapshot, currentWorkspace?.workspace_id, direction);
+    if (!workspace) {
+      return;
+    }
+    try {
+      await this.openSpace({
+        kind: "space",
+        workspace,
+        root: inferWorkspaceRoot(this.snapshot, workspace),
+      });
+    } catch (error) {
+      const label = direction === "next" ? "next" : "previous";
+      void vscode.window.showErrorMessage(`Could not open ${label} Herdr space: ${errorMessage(error)}`);
+    }
   }
 
   private async focusAgent(paneId: string): Promise<void> {

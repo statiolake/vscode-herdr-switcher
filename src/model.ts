@@ -46,6 +46,38 @@ export function findWorkspaceForRoot(
   return snapshot.workspaces.find((workspace) => rootsEqual(inferWorkspaceRoot(snapshot, workspace), root));
 }
 
+export type WorkspaceNavigationDirection = "next" | "previous";
+
+export function workspacesInDisplayOrder(snapshot: HerdrSnapshot): HerdrWorkspace[] {
+  return [...snapshot.workspaces].sort((left, right) =>
+    left.number - right.number
+    || left.workspace_id.localeCompare(right.workspace_id, undefined, { numeric: true }),
+  );
+}
+
+/** Returns the Space adjacent to the current VS Code folder in display order. */
+export function adjacentWorkspace(
+  snapshot: HerdrSnapshot,
+  currentWorkspaceId: string | undefined,
+  direction: WorkspaceNavigationDirection,
+): HerdrWorkspace | undefined {
+  const ordered = workspacesInDisplayOrder(snapshot);
+  if (ordered.length === 0) {
+    return undefined;
+  }
+
+  const effectiveWorkspaceId = currentWorkspaceId ?? snapshot.focused_workspace_id;
+  const currentIndex = effectiveWorkspaceId
+    ? ordered.findIndex((workspace) => workspace.workspace_id === effectiveWorkspaceId)
+    : -1;
+  if (currentIndex < 0) {
+    return direction === "next" ? ordered[0] : ordered[ordered.length - 1];
+  }
+
+  const offset = direction === "next" ? 1 : -1;
+  return ordered[(currentIndex + offset + ordered.length) % ordered.length];
+}
+
 export function agentsForWorkspace(snapshot: HerdrSnapshot, workspaceId: string): HerdrAgent[] {
   return agentsInDisplayOrder(snapshot).filter((agent) => agent.workspace_id === workspaceId);
 }
@@ -57,6 +89,38 @@ export function agentsInDisplayOrder(snapshot: HerdrSnapshot): HerdrAgent[] {
     || paneOrdinal(left.pane_id) - paneOrdinal(right.pane_id)
     || left.pane_id.localeCompare(right.pane_id, undefined, { numeric: true }),
   );
+}
+
+export type AgentNavigationDirection = "next" | "previous";
+
+/**
+ * Returns the agent adjacent to Herdr's current focus in the global Agents
+ * order. When focus is not an agent in the current VS Code space, navigation
+ * starts at that space's first or last agent instead.
+ */
+export function adjacentAgent(
+  snapshot: HerdrSnapshot,
+  currentWorkspaceId: string | undefined,
+  direction: AgentNavigationDirection,
+): HerdrAgent | undefined {
+  const ordered = agentsInDisplayOrder(snapshot);
+  if (ordered.length === 0) {
+    return undefined;
+  }
+
+  const focusedIndex = snapshot.focused_pane_id
+    ? ordered.findIndex((agent) => agent.pane_id === snapshot.focused_pane_id)
+    : -1;
+  const focusedAgent = focusedIndex >= 0 ? ordered[focusedIndex] : undefined;
+  if (focusedAgent && (!currentWorkspaceId || focusedAgent.workspace_id === currentWorkspaceId)) {
+    const offset = direction === "next" ? 1 : -1;
+    return ordered[(focusedIndex + offset + ordered.length) % ordered.length];
+  }
+
+  const scoped = currentWorkspaceId
+    ? ordered.filter((agent) => agent.workspace_id === currentWorkspaceId)
+    : ordered;
+  return direction === "next" ? scoped[0] : scoped[scoped.length - 1];
 }
 
 export function activeAgentForWorkspace(snapshot: HerdrSnapshot, workspaceId: string): HerdrAgent | undefined {
