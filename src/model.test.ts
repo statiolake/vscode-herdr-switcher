@@ -83,12 +83,21 @@ test("agent navigation uses an agent focus when the top-level pane focus is abse
   assert.equal(adjacentAgent(value, "w1", "previous")?.pane_id, "w1:p2");
 });
 
-test("agent navigation starts at the current space when focus is absent", () => {
+test("agent navigation starts at the global Space-order boundary when current Space has no active agent", () => {
   const value = structuredClone(snapshot);
-  value.focused_pane_id = "w1:p3";
-  value.panes.push({ pane_id: "w1:p3", workspace_id: "w1", tab_id: "w1:t1" });
-  assert.equal(adjacentAgent(value, "w1", "next")?.pane_id, "w1:p1");
-  assert.equal(adjacentAgent(value, "w1", "previous")?.pane_id, "w1:p2");
+  value.panes.push({ pane_id: "w2:p1", workspace_id: "w2", tab_id: "w2:t1" });
+  value.agents.push({
+    terminal_id: "t3",
+    agent_status: "idle",
+    workspace_id: "w2",
+    tab_id: "w2:t1",
+    pane_id: "w2:p1",
+    focused: false,
+  });
+  value.focused_pane_id = "w2:p2";
+  value.panes.push({ pane_id: "w2:p2", workspace_id: "w2", tab_id: "w2:t1" });
+  assert.equal(adjacentAgent(value, "w2", "next")?.pane_id, "w1:p1");
+  assert.equal(adjacentAgent(value, "w2", "previous")?.pane_id, "w2:p1");
 });
 
 test("space navigation follows workspace order and wraps", () => {

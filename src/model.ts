@@ -96,7 +96,8 @@ export type AgentNavigationDirection = "next" | "previous";
 /**
  * Returns the agent adjacent to Herdr's current focus in the global Agents
  * order. When focus is not an agent in the current VS Code space, navigation
- * starts at that space's first or last agent instead.
+ * starts at the first or last agent in that global order. The order is grouped
+ * by Space, then tab, then pane.
  */
 export function adjacentAgent(
   snapshot: HerdrSnapshot,
@@ -118,10 +119,7 @@ export function adjacentAgent(
     return ordered[(focusedIndex + offset + ordered.length) % ordered.length];
   }
 
-  const scoped = currentWorkspaceId
-    ? ordered.filter((agent) => agent.workspace_id === currentWorkspaceId)
-    : ordered;
-  return direction === "next" ? scoped[0] : scoped[scoped.length - 1];
+  return direction === "next" ? ordered[0] : ordered[ordered.length - 1];
 }
 
 function focusedAgentInSnapshot(snapshot: HerdrSnapshot): HerdrAgent | undefined {
