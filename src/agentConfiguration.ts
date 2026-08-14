@@ -46,7 +46,7 @@ export function agentShellCommand(argv: readonly string[], platform = process.pl
   const command = shellCommand(argv, platform);
   return platform === "win32"
     ? `& ${command}; exit $LASTEXITCODE`
-    : `${command}; exit $?`;
+    : `exec ${command}`;
 }
 
 function quotePosix(value: string): string {

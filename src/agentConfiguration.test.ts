@@ -30,10 +30,10 @@ test("agent argv is safely serialized for PowerShell", () => {
   assert.equal(shellCommand(["claude", "it's"], "win32"), `'claude' 'it''s'`);
 });
 
-test("an agent exits its POSIX shell while preserving its status", () => {
+test("an agent replaces its POSIX shell", () => {
   assert.equal(
     agentShellCommand(["claude", "hello world"], "darwin"),
-    `'claude' 'hello world'; exit $?`,
+    `exec 'claude' 'hello world'`,
   );
 });
 
