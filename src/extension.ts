@@ -12,6 +12,7 @@ import {
   activeTreeSelection,
   adjacentAgent,
   adjacentWorkspace,
+  agentInAdjacentWorkspace,
   findWorkspaceForRoot,
   inferWorkspaceRoot,
   isFocusedWorkspace,
@@ -75,6 +76,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("herdr.nextAgent", () => controller.nextAgent()),
     vscode.commands.registerCommand("herdr.previousAgent", () => controller.previousAgent()),
     vscode.commands.registerCommand("herdr.focusActiveAgent", () => controller.focusActiveAgent()),
+    vscode.commands.registerCommand("herdr.focusActiveAgentOrNext", () => controller.focusActiveAgentOrNext()),
+    vscode.commands.registerCommand("herdr.focusActiveAgentOrPrevious", () => controller.focusActiveAgentOrPrevious()),
     vscode.commands.registerCommand("herdr.renameAgent", (node: AgentNode) => controller.renameAgent(node)),
     vscode.commands.registerCommand("herdr.renameTab", (node: AgentNode) => controller.renameTab(node)),
     vscode.commands.registerCommand("herdr.closeAgent", (node: AgentNode) => controller.closeAgent(node)),
@@ -457,6 +460,39 @@ class HerdrController implements vscode.Disposable {
       await this.focusAgent(agent.pane_id);
     } catch (error) {
       void vscode.window.showErrorMessage(`Could not focus active Herdr agent: ${errorMessage(error)}`);
+    }
+  }
+
+  async focusActiveAgentOrNext(): Promise<void> {
+    await this.focusActiveAgentOr("next");
+  }
+
+  async focusActiveAgentOrPrevious(): Promise<void> {
+    await this.focusActiveAgentOr("previous");
+  }
+
+  private async focusActiveAgentOr(direction: AgentNavigationDirection): Promise<void> {
+    await this.refresh(false);
+    const workspace = this.currentWorkspace();
+    if (!workspace || !this.snapshot) {
+      return;
+    }
+    const activeAgent = isFocusedWorkspace(this.snapshot, workspace.workspace_id)
+      ? activeAgentForWorkspace(this.snapshot, workspace.workspace_id)
+      : undefined;
+    const target = activeAgent ?? agentInAdjacentWorkspace(this.snapshot, workspace.workspace_id, direction);
+    if (!target) {
+      return;
+    }
+    try {
+      if (target.workspace_id === workspace.workspace_id) {
+        await this.focusAgent(target.pane_id);
+      } else {
+        await this.openAgentByPane(target.pane_id);
+      }
+    } catch (error) {
+      const label = direction === "next" ? "next" : "previous";
+      void vscode.window.showErrorMessage(`Could not focus active or ${label} Herdr agent: ${errorMessage(error)}`);
     }
   }
 

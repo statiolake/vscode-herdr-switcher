@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activeAgentForWorkspace, activeTreeSelection, adjacentAgent, adjacentWorkspace, agentsForWorkspace, agentsInDisplayOrder, findWorkspaceForRoot, inferWorkspaceRoot, isFocusedWorkspace, nonShellForegroundProcesses, normalizeRoot } from "./model";
+import { activeAgentForWorkspace, activeTreeSelection, adjacentAgent, adjacentWorkspace, agentInAdjacentWorkspace, agentsForWorkspace, agentsInDisplayOrder, findWorkspaceForRoot, inferWorkspaceRoot, isFocusedWorkspace, nonShellForegroundProcesses, normalizeRoot } from "./model";
 import type { HerdrSnapshot } from "./types";
 
 const snapshot: HerdrSnapshot = {
@@ -98,6 +98,21 @@ test("agent navigation starts at the global Space-order boundary when current Sp
   value.panes.push({ pane_id: "w2:p2", workspace_id: "w2", tab_id: "w2:t1" });
   assert.equal(adjacentAgent(value, "w2", "next")?.pane_id, "w1:p1");
   assert.equal(adjacentAgent(value, "w2", "previous")?.pane_id, "w2:p1");
+});
+
+test("active-agent fallback chooses the nearest populated Space in direction", () => {
+  const value = structuredClone(snapshot);
+  value.panes.push({ pane_id: "w2:p1", workspace_id: "w2", tab_id: "w2:t1" });
+  value.agents.push({
+    terminal_id: "t3",
+    agent_status: "idle",
+    workspace_id: "w2",
+    tab_id: "w2:t1",
+    pane_id: "w2:p1",
+    focused: false,
+  });
+  assert.equal(agentInAdjacentWorkspace(value, "w1", "next")?.pane_id, "w2:p1");
+  assert.equal(agentInAdjacentWorkspace(value, "w2", "previous")?.pane_id, "w1:p2");
 });
 
 test("space navigation follows workspace order and wraps", () => {

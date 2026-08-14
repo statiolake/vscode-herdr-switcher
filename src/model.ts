@@ -122,6 +122,41 @@ export function adjacentAgent(
   return direction === "next" ? ordered[0] : ordered[ordered.length - 1];
 }
 
+/**
+ * Returns the first/last agent in the nearest other populated Space in the
+ * requested direction. Spaces are traversed in Herdr display order and wrap;
+ * when no other Space has an agent, the global boundary is used.
+ */
+export function agentInAdjacentWorkspace(
+  snapshot: HerdrSnapshot,
+  currentWorkspaceId: string | undefined,
+  direction: AgentNavigationDirection,
+): HerdrAgent | undefined {
+  const orderedWorkspaces = workspacesInDisplayOrder(snapshot);
+  const orderedAgents = agentsInDisplayOrder(snapshot);
+  if (orderedAgents.length === 0) {
+    return undefined;
+  }
+  if (!currentWorkspaceId) {
+    return direction === "next" ? orderedAgents[0] : orderedAgents[orderedAgents.length - 1];
+  }
+
+  const workspaceIndex = orderedWorkspaces.findIndex((workspace) => workspace.workspace_id === currentWorkspaceId);
+  if (workspaceIndex < 0 || orderedWorkspaces.length < 2) {
+    return direction === "next" ? orderedAgents[0] : orderedAgents[orderedAgents.length - 1];
+  }
+
+  const offset = direction === "next" ? 1 : -1;
+  for (let distance = 1; distance < orderedWorkspaces.length; distance += 1) {
+    const index = (workspaceIndex + offset * distance + orderedWorkspaces.length) % orderedWorkspaces.length;
+    const workspaceAgents = agentsForWorkspace(snapshot, orderedWorkspaces[index]!.workspace_id);
+    if (workspaceAgents.length > 0) {
+      return direction === "next" ? workspaceAgents[0] : workspaceAgents[workspaceAgents.length - 1];
+    }
+  }
+  return direction === "next" ? orderedAgents[0] : orderedAgents[orderedAgents.length - 1];
+}
+
 function focusedAgentInSnapshot(snapshot: HerdrSnapshot): HerdrAgent | undefined {
   if (snapshot.focused_pane_id !== undefined) {
     return snapshot.agents.find((agent) => agent.pane_id === snapshot.focused_pane_id);

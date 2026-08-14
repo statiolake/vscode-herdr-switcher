@@ -75,6 +75,14 @@
         "title": "Herdr: Focus Active Agent"
       },
       {
+        "command": "herdr.focusActiveAgentOrNext",
+        "title": "Herdr: Focus Active Agent or Next"
+      },
+      {
+        "command": "herdr.focusActiveAgentOrPrevious",
+        "title": "Herdr: Focus Active Agent or Previous"
+      },
+      {
         "command": "herdr.renameAgent",
         "title": "Herdr: Rename Agent...",
         "icon": "$(edit)"
