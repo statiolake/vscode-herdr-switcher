@@ -130,12 +130,15 @@ function focusedAgentInSnapshot(snapshot: HerdrSnapshot): HerdrAgent | undefined
 }
 
 export function activeAgentForWorkspace(snapshot: HerdrSnapshot, workspaceId: string): HerdrAgent | undefined {
-  if (!snapshot.focused_pane_id) {
-    return undefined;
+  const agent = focusedAgentInSnapshot(snapshot);
+  return agent?.workspace_id === workspaceId ? agent : undefined;
+}
+
+export function isFocusedWorkspace(snapshot: HerdrSnapshot, workspaceId: string): boolean {
+  if (snapshot.focused_workspace_id !== undefined) {
+    return snapshot.focused_workspace_id === workspaceId;
   }
-  return snapshot.agents.find((agent) =>
-    agent.workspace_id === workspaceId && agent.pane_id === snapshot.focused_pane_id,
-  );
+  return snapshot.workspaces.find((workspace) => workspace.workspace_id === workspaceId)?.focused === true;
 }
 
 export interface ActiveTreeSelection {

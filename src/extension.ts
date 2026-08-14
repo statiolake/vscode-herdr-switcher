@@ -14,6 +14,7 @@ import {
   adjacentWorkspace,
   findWorkspaceForRoot,
   inferWorkspaceRoot,
+  isFocusedWorkspace,
   nonShellForegroundProcesses,
   normalizeRoot,
   type AgentNavigationDirection,
@@ -73,6 +74,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("herdr.openAgent", (node: AgentNode) => controller.openAgent(node)),
     vscode.commands.registerCommand("herdr.nextAgent", () => controller.nextAgent()),
     vscode.commands.registerCommand("herdr.previousAgent", () => controller.previousAgent()),
+    vscode.commands.registerCommand("herdr.focusActiveAgent", () => controller.focusActiveAgent()),
     vscode.commands.registerCommand("herdr.renameAgent", (node: AgentNode) => controller.renameAgent(node)),
     vscode.commands.registerCommand("herdr.renameTab", (node: AgentNode) => controller.renameTab(node)),
     vscode.commands.registerCommand("herdr.closeAgent", (node: AgentNode) => controller.closeAgent(node)),
@@ -439,6 +441,23 @@ class HerdrController implements vscode.Disposable {
       await this.retryFocus(() => this.client.focusAgent(paneId));
     }
     await this.refresh(false);
+  }
+
+  async focusActiveAgent(): Promise<void> {
+    await this.refresh(false);
+    const workspace = this.currentWorkspace();
+    if (!workspace || !this.snapshot || !isFocusedWorkspace(this.snapshot, workspace.workspace_id)) {
+      return;
+    }
+    const agent = activeAgentForWorkspace(this.snapshot, workspace.workspace_id);
+    if (!agent) {
+      return;
+    }
+    try {
+      await this.focusAgent(agent.pane_id);
+    } catch (error) {
+      void vscode.window.showErrorMessage(`Could not focus active Herdr agent: ${errorMessage(error)}`);
+    }
   }
 
   async attachSpace(node: SpaceNode): Promise<void> {

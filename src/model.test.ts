@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activeAgentForWorkspace, activeTreeSelection, adjacentAgent, adjacentWorkspace, agentsForWorkspace, agentsInDisplayOrder, findWorkspaceForRoot, inferWorkspaceRoot, nonShellForegroundProcesses, normalizeRoot } from "./model";
+import { activeAgentForWorkspace, activeTreeSelection, adjacentAgent, adjacentWorkspace, agentsForWorkspace, agentsInDisplayOrder, findWorkspaceForRoot, inferWorkspaceRoot, isFocusedWorkspace, nonShellForegroundProcesses, normalizeRoot } from "./model";
 import type { HerdrSnapshot } from "./types";
 
 const snapshot: HerdrSnapshot = {
@@ -134,6 +134,25 @@ test("active agent is scoped to the current workspace", () => {
   value.focused_pane_id = "w1:p2";
   assert.equal(activeAgentForWorkspace(value, "w1")?.pane_id, "w1:p2");
   assert.equal(activeAgentForWorkspace(value, "w2"), undefined);
+});
+
+test("active agent falls back to agent focus when pane focus is absent", () => {
+  const value = structuredClone(snapshot);
+  value.focused_pane_id = undefined;
+  value.agents[0]!.focused = true;
+  value.agents[1]!.focused = false;
+  assert.equal(activeAgentForWorkspace(value, "w1")?.pane_id, "w1:p2");
+});
+
+test("workspace focus prefers the snapshot focus id and falls back to workspace state", () => {
+  assert.equal(isFocusedWorkspace(snapshot, "w1"), true);
+  assert.equal(isFocusedWorkspace(snapshot, "w2"), false);
+  const value = structuredClone(snapshot);
+  value.focused_workspace_id = undefined;
+  value.workspaces[0]!.focused = false;
+  value.workspaces[1]!.focused = true;
+  assert.equal(isFocusedWorkspace(value, "w1"), false);
+  assert.equal(isFocusedWorkspace(value, "w2"), true);
 });
 
 test("close confirmation ignores shells but keeps other foreground processes", () => {
