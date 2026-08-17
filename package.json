@@ -98,6 +98,16 @@
         "icon": "$(trash)"
       },
       {
+        "command": "herdr.copyAgentOutput",
+        "title": "Herdr: Copy Recent Agent Output",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "herdr.openAgentOutput",
+        "title": "Herdr: Open Recent Agent Output",
+        "icon": "$(open-preview)"
+      },
+      {
         "command": "herdr.openActiveAgent",
         "title": "Herdr: Open Active Agent"
       },
@@ -172,6 +182,14 @@
           ],
           "default": "herdr",
           "description": "How Agent terminals are opened. Restart the Extension Host after changing this setting."
+        },
+        "herdr.outputLines": {
+          "type": "number",
+          "scope": "application",
+          "default": 1000,
+          "minimum": 1,
+          "maximum": 5000,
+          "description": "Number of recent terminal rows used by the Agent output commands."
         },
         "herdr.agents": {
           "type": "array",
@@ -270,6 +288,16 @@
           "command": "herdr.closeAgent",
           "when": "view == herdr.agents && viewItem == herdrAgent",
           "group": "herdr@3"
+        },
+        {
+          "command": "herdr.copyAgentOutput",
+          "when": "view == herdr.agents && viewItem == herdrAgent",
+          "group": "herdr@4"
+        },
+        {
+          "command": "herdr.openAgentOutput",
+          "when": "view == herdr.agents && viewItem == herdrAgent",
+          "group": "herdr@5"
         }
       ]
     }

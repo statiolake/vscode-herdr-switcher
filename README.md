@@ -12,6 +12,7 @@ Bring [Herdr](https://github.com/ogulcancelik/herdr) spaces and AI coding agents
 - Direct Agent terminals use Herdr's session-control bridge, so VS Code owns each terminal and no Herdr `Ctrl-B` prefix is required.
 - Start Claude Code, Codex, or custom agents in dedicated Herdr tabs.
 - Rename an agent or its containing tab from the Agents context menu.
+- Copy an agent's recent output to the clipboard or open it in a read-only editor from the Agents context menu.
 - Close Spaces with the inline trash button or from the `…` menu, with a warning when non-shell processes are running.
 - Run Herdr on the local host when VS Code is connected to a Dev Container.
 
@@ -43,6 +44,7 @@ Herdr remains the source of truth. Cross-window actions are delivered through sh
 - `herdr.createSpaceOnOpen`: automatically create or associate Spaces
 - `herdr.terminalLocation`: open Herdr in the Terminal view (`panel`) or as a pinned editor (`editor`)
 - `herdr.agentTerminalMode`: use the full Herdr UI (`herdr`, default) or a dedicated `terminal session control` terminal per Agent pane (`direct`); restart the Extension Host after changing it
+- `herdr.outputLines`: number of recent terminal rows used by the Agent output commands (default `1000`)
 - `herdr.agents`: agents available from the Add Agent picker
 - `herdr.defaultAgent`: agent launched by the `+` button
 

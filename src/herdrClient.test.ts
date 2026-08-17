@@ -29,3 +29,36 @@ test("terminal session control arguments target one pane with an initial size", 
     ],
   );
 });
+
+test("pane read arguments return bounded plain text output", () => {
+  assert.deepEqual(
+    new HerdrClient({ executable: "herdr" }).paneReadArgs("w1:p1"),
+    [
+      "pane", "read", "w1:p1",
+      "--source", "recent-unwrapped",
+      "--lines", "1000",
+      "--format", "text",
+    ],
+  );
+  assert.deepEqual(
+    new HerdrClient({ executable: "herdr" }).paneReadArgs("w1:p1", {
+      source: "recent-unwrapped",
+      lines: 200,
+    }),
+    [
+      "pane", "read", "w1:p1",
+      "--source", "recent-unwrapped",
+      "--lines", "200",
+      "--format", "text",
+    ],
+  );
+  assert.deepEqual(
+    new HerdrClient({ executable: "herdr", session: "work" }).paneReadArgs("w1:p1", { lines: 9_999 }),
+    [
+      "pane", "read", "w1:p1",
+      "--source", "recent-unwrapped",
+      "--lines", "5000",
+      "--format", "text",
+    ],
+  );
+});

@@ -24,6 +24,7 @@ import {
 } from "./model";
 import { ConsumedNavigationIntents, HerdrNavigationIntentStore } from "./navigationIntent";
 import { OverallStatusBar } from "./overallStatusBar";
+import { HerdrOutputDocumentProvider, HERDR_OUTPUT_SCHEME, outputDocumentUri } from "./outputDocument";
 import { RootLock } from "./rootLock";
 import { TerminalRegistry, type HerdrTerminalTarget } from "./terminalRegistry";
 import {
@@ -33,10 +34,11 @@ import {
   type AgentNode,
   type SpaceNode,
 } from "./treeProvider";
-import type { HerdrSnapshot } from "./types";
+import type { HerdrAgent, HerdrSnapshot } from "./types";
 
 const BINDINGS_KEY = "herdr.spaceBindings.v1";
 const TERMINAL_NAME = "Herdr";
+const DEFAULT_OUTPUT_LINES = 1_000;
 
 interface WorkspaceLocation {
   root: string;
@@ -53,11 +55,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const agents = new AgentsTreeProvider(store);
   const spacesView = vscode.window.createTreeView("herdr.spaces", { treeDataProvider: spaces });
   const agentsView = vscode.window.createTreeView("herdr.agents", { treeDataProvider: agents });
-  const controller = new HerdrController(context, store, output);
+  const outputDocuments = new HerdrOutputDocumentProvider();
+  const outputDocumentRegistration = vscode.workspace.registerTextDocumentContentProvider(
+    HERDR_OUTPUT_SCHEME,
+    outputDocuments,
+  );
+  const controller = new HerdrController(context, store, output, outputDocuments);
   const overallStatus = new OverallStatusBar();
   const syncSelection = () => synchronizeTreeSelection(store, spaces, agents, spacesView, agentsView, output);
   context.subscriptions.push(
     output,
+    outputDocuments,
+    outputDocumentRegistration,
     store,
     spaces,
     agents,
@@ -81,6 +90,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("herdr.renameAgent", (node: AgentNode) => controller.renameAgent(node)),
     vscode.commands.registerCommand("herdr.renameTab", (node: AgentNode) => controller.renameTab(node)),
     vscode.commands.registerCommand("herdr.closeAgent", (node: AgentNode) => controller.closeAgent(node)),
+    vscode.commands.registerCommand("herdr.copyAgentOutput", (node?: AgentNode) => controller.copyAgentOutput(node)),
+    vscode.commands.registerCommand("herdr.openAgentOutput", (node?: AgentNode) => controller.openAgentOutput(node)),
     vscode.commands.registerCommand("herdr.openActiveAgent", () => controller.openActiveAgent()),
     vscode.commands.registerCommand("herdr.openAgentByPane", (paneId: string) => controller.openAgentByPane(paneId)),
     vscode.commands.registerCommand("herdr.attachSpace", (node: SpaceNode) => controller.attachSpace(node)),
@@ -136,6 +147,7 @@ class HerdrController implements vscode.Disposable {
     private readonly context: vscode.ExtensionContext,
     private readonly store: HerdrSnapshotStore,
     private readonly output: vscode.LogOutputChannel,
+    private readonly outputDocuments: HerdrOutputDocumentProvider,
   ) {
     this.spaceCreationLock = new RootLock(path.join(context.globalStorageUri.fsPath, "space-creation-locks"));
     this.agentTerminalMode = vscode.workspace.getConfiguration("herdr")
@@ -349,6 +361,33 @@ class HerdrController implements vscode.Disposable {
     } catch (error) {
       void vscode.window.showErrorMessage(`Could not close Herdr agent: ${errorMessage(error)}`);
     }
+  }
+
+  async copyAgentOutput(node?: AgentNode): Promise<void> {
+    const result = await this.readAgentOutput(node);
+    if (!result) {
+      return;
+    }
+    if (!result.output.trim()) {
+      void vscode.window.showInformationMessage(`No recent output for ${agentDisplayName(result.agent)}.`);
+      return;
+    }
+    await vscode.env.clipboard.writeText(result.output);
+    void vscode.window.setStatusBarMessage(
+      `Copied recent output from ${agentDisplayName(result.agent)}.`,
+      3_000,
+    );
+  }
+
+  async openAgentOutput(node?: AgentNode): Promise<void> {
+    const result = await this.readAgentOutput(node);
+    if (!result) {
+      return;
+    }
+    const uri = outputDocumentUri(result.agent.pane_id);
+    this.outputDocuments.set(uri, result.output);
+    const document = await vscode.workspace.openTextDocument(uri);
+    await vscode.window.showTextDocument(document, { preview: true, preserveFocus: false });
   }
 
   async openActiveAgent(): Promise<void> {
@@ -1222,6 +1261,31 @@ class HerdrController implements vscode.Disposable {
 
   private terminalLocation(): HerdrTerminalLocation {
     return vscode.workspace.getConfiguration("herdr").get<HerdrTerminalLocation>("terminalLocation", "panel");
+  }
+
+  private async readAgentOutput(node?: AgentNode): Promise<{ agent: HerdrAgent; output: string } | undefined> {
+    const agent = node?.kind === "agent" ? node.agent : this.activeAgent();
+    if (!agent) {
+      void vscode.window.showWarningMessage("No active Herdr agent is available.");
+      return undefined;
+    }
+    try {
+      const output = await this.client.readPane(agent.pane_id, {
+        source: "recent-unwrapped",
+        lines: this.outputLineCount(),
+      });
+      return { agent, output };
+    } catch (error) {
+      void vscode.window.showErrorMessage(`Could not read Herdr agent output: ${errorMessage(error)}`);
+      return undefined;
+    }
+  }
+
+  private outputLineCount(): number {
+    const value = vscode.workspace.getConfiguration("herdr").get<number>("outputLines", DEFAULT_OUTPUT_LINES);
+    return Number.isFinite(value)
+      ? Math.max(1, Math.min(5_000, Math.floor(value)))
+      : DEFAULT_OUTPUT_LINES;
   }
 }
 

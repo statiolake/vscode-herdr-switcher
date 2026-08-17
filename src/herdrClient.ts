@@ -20,6 +20,13 @@ export interface HerdrServerStatus {
   session?: string | null;
 }
 
+export type HerdrPaneReadSource = "visible" | "recent" | "recent-unwrapped" | "detection";
+
+export interface HerdrPaneReadOptions {
+  source?: HerdrPaneReadSource;
+  lines?: number;
+}
+
 export class HerdrCommandError extends Error {
   constructor(
     message: string,
@@ -93,6 +100,21 @@ export class HerdrClient {
       "pane", "process-info", "--pane", paneId,
     ]);
     return { ...result.process_info, foreground_processes: result.process_info.foreground_processes ?? [] };
+  }
+
+  paneReadArgs(paneId: string, options: HerdrPaneReadOptions = {}): string[] {
+    const source = options.source ?? "recent-unwrapped";
+    const lines = normalizeReadLines(options.lines ?? 1_000);
+    return [
+      "pane", "read", paneId,
+      "--source", source,
+      "--lines", String(lines),
+      "--format", "text",
+    ];
+  }
+
+  async readPane(paneId: string, options: HerdrPaneReadOptions = {}): Promise<string> {
+    return this.runText(this.paneReadArgs(paneId, options));
   }
 
   async renamePane(paneId: string, label: string): Promise<void> {
@@ -218,9 +240,21 @@ export class HerdrClient {
     }
   }
 
+  private async runText(args: string[]): Promise<string> {
+    const { stdout, stderr, exitCode } = await run(this.options.executable, [...this.sessionArgs(), ...args]);
+    if (exitCode !== 0) {
+      throw new HerdrCommandError(stderr.trim() || `herdr exited with code ${exitCode}`, stderr, exitCode);
+    }
+    return stdout;
+  }
+
   private sessionArgs(): string[] {
     return this.options.session ? ["--session", this.options.session] : [];
   }
+}
+
+function normalizeReadLines(value: number): number {
+  return Number.isFinite(value) ? Math.max(1, Math.min(5_000, Math.floor(value))) : 1_000;
 }
 
 function run(executable: string, args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
