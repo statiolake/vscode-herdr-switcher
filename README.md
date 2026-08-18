@@ -42,6 +42,7 @@ Herdr remains the source of truth. Cross-window actions are delivered through sh
 - `herdr.session`: optional named Herdr session
 - `herdr.refreshInterval`: fallback snapshot interval in milliseconds when Herdr's event stream is unavailable
 - `herdr.createSpaceOnOpen`: automatically create or associate Spaces
+- `herdr.synchronizeState`: synchronize VS Code window activation and workspace state with Herdr (default `false`); set to `true` to enable active synchronization
 - `herdr.terminalLocation`: open Herdr in the Terminal view (`panel`) or as a pinned editor (`editor`)
 - `herdr.agentTerminalMode`: use the full Herdr UI (`herdr`, default) or a dedicated `terminal session control` terminal per Agent pane (`direct`); restart the Extension Host after changing it
 - `herdr.outputLines`: number of recent terminal rows used by the Agent output commands (default `1000`)
@@ -49,6 +50,12 @@ Herdr remains the source of truth. Cross-window actions are delivered through sh
 - `herdr.defaultAgent`: agent launched by the `+` button
 
 All settings are user-level settings. The default agents are Claude Code and Codex:
+
+With `herdr.synchronizeState` set to `false`, opening a VS Code folder does not
+start Herdr or create a Space, and Herdr remains empty in the views until it is
+already running or an explicit Agent start creates the current Space. Space
+clicks still switch VS Code windows; closing a Space leaves its VS Code window
+open, and only an Agent in the current window can be highlighted.
 
 The default terminal location is `panel`. VS Code does not expose a dedicated
 Secondary Side Bar terminal location, but if you move the Terminal view there,

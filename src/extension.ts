@@ -18,6 +18,7 @@ import {
   isFocusedWorkspace,
   nonShellForegroundProcesses,
   normalizeRoot,
+  type ActiveTreeSelection,
   type AgentNavigationDirection,
   type SpaceBinding,
   type WorkspaceNavigationDirection,
@@ -62,7 +63,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   const controller = new HerdrController(context, store, output, outputDocuments);
   const overallStatus = new OverallStatusBar();
-  const syncSelection = () => synchronizeTreeSelection(store, spaces, agents, spacesView, agentsView, output);
+  const syncSelection = () => synchronizeTreeSelection(
+    store,
+    spaces,
+    agents,
+    spacesView,
+    agentsView,
+    output,
+    controller.treeSelection(),
+  );
   context.subscriptions.push(
     output,
     outputDocuments,
@@ -98,15 +107,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("herdr.closeSpace", (node: SpaceNode) => controller.closeSpace(node)),
     vscode.commands.registerCommand("herdr.addAgent", () => controller.addAgent()),
     vscode.commands.registerCommand("herdr.addDefaultAgent", () => controller.addDefaultAgent()),
-    vscode.workspace.onDidChangeWorkspaceFolders(() => controller.reconcileWorkspace()),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      void controller.reconcileWorkspace().then(syncSelection);
+    }),
     vscode.window.onDidChangeWindowState((state) => {
       if (state.focused) {
-        void controller.handleWindowActivated();
+        void controller.handleWindowActivated().then(syncSelection);
       }
     }),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration("herdr")) {
         controller.reconfigure();
+        void syncSelection();
       }
     }),
     controller,
@@ -168,6 +180,20 @@ class HerdrController implements vscode.Disposable {
     return association && this.snapshot
       ? activeAgentForWorkspace(this.snapshot, association.workspace.workspace_id)
       : undefined;
+  }
+
+  treeSelection(): ActiveTreeSelection {
+    if (!this.snapshot) {
+      return {};
+    }
+    if (this.synchronizeState()) {
+      return activeTreeSelection(this.snapshot);
+    }
+    const association = this.currentWorkspaceAssociation();
+    const agent = association
+      ? activeAgentForWorkspace(this.snapshot, association.workspace.workspace_id)
+      : undefined;
+    return { agentPaneId: agent?.pane_id };
   }
 
   dispose(): void {
@@ -234,15 +260,22 @@ class HerdrController implements vscode.Disposable {
       const message = errorMessage(error);
       this.snapshot = undefined;
       this.output.debug(`Snapshot failed: ${message}`);
-      this.store.setError("Herdr is not running");
+      if (this.synchronizeState()) {
+        this.store.setError("Herdr is not running");
+      } else {
+        this.store.setOffline();
+      }
       this.refreshEmitter.fire(undefined);
-      if (showError) {
+      if (showError && this.synchronizeState()) {
         void vscode.window.showErrorMessage(`Herdr: ${message}`);
       }
     }
   }
 
   async reconcileFolders(): Promise<void> {
+    if (!this.synchronizeState()) {
+      return;
+    }
     if (!vscode.workspace.getConfiguration("herdr").get("createSpaceOnOpen", true)) {
       return;
     }
@@ -281,10 +314,14 @@ class HerdrController implements vscode.Disposable {
       return;
     }
     if (this.isCurrentRoot(root)) {
-      await this.focusSpace(node.workspace.workspace_id, true);
+      if (this.synchronizeState()) {
+        await this.focusSpace(node.workspace.workspace_id);
+      }
       return;
     }
-    await this.publishWorkspaceNavigation(node.workspace.workspace_id);
+    if (this.synchronizeState()) {
+      await this.publishWorkspaceNavigation(node.workspace.workspace_id);
+    }
     await vscode.commands.executeCommand(
       "vscode.openFolder", this.workspaceUri(node.workspace.workspace_id, root), { forceNewWindow: true },
     );
@@ -579,8 +616,10 @@ class HerdrController implements vscode.Disposable {
     if (running.length > 0) {
       const preview = running.slice(0, 5).map((process) => `${process.name} (PID ${process.pid})`).join(", ");
       const more = running.length > 5 ? ` and ${running.length - 5} more` : "";
+      const closeWindow = this.synchronizeState();
       const accepted = await vscode.window.showWarningMessage(
-        `“${node.workspace.label}” has running processes: ${preview}${more}. Close the space and its VS Code window?`,
+        `“${node.workspace.label}” has running processes: ${preview}${more}. `
+          + (closeWindow ? "Close the space and its VS Code window?" : "Close the space but keep its VS Code window open?"),
         { modal: true },
         "Close Anyway",
       );
@@ -590,9 +629,10 @@ class HerdrController implements vscode.Disposable {
     }
     try {
       if (this.isCurrentRoot(root)) {
-        await this.closeCurrentWindowSpace(node.workspace.workspace_id, root);
+        await this.closeCurrentWindowSpace(node.workspace.workspace_id, root, this.synchronizeState());
       } else if (
-        this.snapshot
+        this.synchronizeState()
+        && this.snapshot
         && this.navigationIntents.hasWindowPresence(this.snapshot, node.workspace.workspace_id)
       ) {
         await this.navigationIntents.publishClose(node.workspace.workspace_id);
@@ -640,13 +680,13 @@ class HerdrController implements vscode.Disposable {
     }
   }
 
-  private async focusSpace(workspaceId: string, revealSidebar: boolean): Promise<void> {
+  private async focusSpace(workspaceId: string): Promise<void> {
     try {
-      if (revealSidebar) {
+      if (this.synchronizeState()) {
         await vscode.commands.executeCommand("workbench.view.extension.herdr");
         await vscode.commands.executeCommand("herdr.spaces.focus");
+        await this.retryFocus(() => this.client.focusWorkspace(workspaceId));
       }
-      await this.retryFocus(() => this.client.focusWorkspace(workspaceId));
       await this.refresh(false);
     } catch (error) {
       void vscode.window.showErrorMessage(`Could not focus Herdr space: ${errorMessage(error)}`);
@@ -654,9 +694,12 @@ class HerdrController implements vscode.Disposable {
   }
 
   private async activateCurrentSpace(): Promise<void> {
+    if (!this.synchronizeState()) {
+      return;
+    }
     const workspace = this.currentWorkspace();
     if (workspace) {
-      await this.focusSpace(workspace.workspace_id, false);
+      await this.focusSpace(workspace.workspace_id);
     }
   }
 
@@ -672,7 +715,9 @@ class HerdrController implements vscode.Disposable {
   private async publishAgentNavigation(workspaceId: string, paneId: string): Promise<void> {
     try {
       await this.navigationIntents.publishAgent(workspaceId, paneId);
-      await this.client.focusAgent(paneId);
+      if (this.synchronizeState()) {
+        await this.client.focusAgent(paneId);
+      }
     } catch (error) {
       this.output.warn(`Could not publish agent navigation intent: ${errorMessage(error)}`);
     }
@@ -720,14 +765,16 @@ class HerdrController implements vscode.Disposable {
         await this.navigationIntents.acknowledge(intent);
         this.consumedNavigationIntents.add(intent.requestId);
         this.output.debug(`Consuming Herdr navigation intent ${intent.requestId} (${intent.kind}).`);
-        await this.closeCurrentWindowSpace(intent.workspaceId, association.root);
+        await this.closeCurrentWindowSpace(intent.workspaceId, association.root, this.synchronizeState());
         return true;
       }
       await this.navigationIntents.acknowledge(intent);
       this.consumedNavigationIntents.add(intent.requestId);
       this.output.debug(`Consuming Herdr navigation intent ${intent.requestId} (${intent.kind}).`);
-      await vscode.commands.executeCommand("workbench.view.extension.herdr");
-      await vscode.commands.executeCommand(intent.kind === "agent" ? "herdr.agents.focus" : "herdr.spaces.focus");
+      if (intent.kind === "workspace" && !this.synchronizeState()) {
+        await this.refresh(false);
+        return true;
+      }
       if (intent.kind === "agent" || intent.kind === "attach") {
         if (intent.kind === "agent") {
           await this.focusAgent(intent.paneId);
@@ -868,13 +915,19 @@ class HerdrController implements vscode.Disposable {
     return nonShellForegroundProcesses(infos);
   }
 
-  private async closeCurrentWindowSpace(workspaceId: string, root: string): Promise<void> {
+  private async closeCurrentWindowSpace(workspaceId: string, root: string, closeWindow: boolean): Promise<void> {
     const normalized = normalizeRoot(root);
     this.closingRoots.add(normalized);
     await this.removeBinding(root, workspaceId);
     try {
       await this.client.closeWorkspace(workspaceId);
-      await vscode.commands.executeCommand("workbench.action.closeWindow");
+      if (closeWindow) {
+        await vscode.commands.executeCommand("workbench.action.closeWindow");
+      } else {
+        await this.refresh(false);
+        this.closingRoots.delete(normalized);
+        return;
+      }
     } catch (error) {
       this.closingRoots.delete(normalized);
       throw error;
@@ -906,6 +959,9 @@ class HerdrController implements vscode.Disposable {
         async () => {
           await this.refresh(false);
           await this.reconcileFolders();
+          if (!this.synchronizeState()) {
+            await this.ensureCurrentSpaceForAgent();
+          }
           const association = this.currentWorkspaceAssociation();
           if (!association || !this.snapshot) {
             throw new Error("The current VS Code folder is not associated with a Herdr space.");
@@ -948,6 +1004,28 @@ class HerdrController implements vscode.Disposable {
       );
     } catch (error) {
       void vscode.window.showErrorMessage(`Could not start Herdr agent: ${errorMessage(error)}`);
+    }
+  }
+
+  private async ensureCurrentSpaceForAgent(): Promise<void> {
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    const location = folder ? this.workspaceLocation(folder) : undefined;
+    if (!location) {
+      if (folder) {
+        this.reportWorkspaceLocationError(folder);
+      }
+      return;
+    }
+    if (!this.snapshot) {
+      await this.ensureServer();
+      await this.refresh(false);
+    }
+    if (!this.snapshot) {
+      return;
+    }
+    const created = await this.ensureSpace(location, folder?.name || path.basename(location.root));
+    if (created) {
+      await this.refresh(false);
     }
   }
 
@@ -1134,7 +1212,14 @@ class HerdrController implements vscode.Disposable {
     return new HerdrClient({ executable: config.get("executable", "herdr"), session: session || undefined });
   }
 
+  private synchronizeState(): boolean {
+    return vscode.workspace.getConfiguration("herdr").get<boolean>("synchronizeState", false);
+  }
+
   private async reportWindowPresence(): Promise<void> {
+    if (!this.synchronizeState()) {
+      return;
+    }
     const workspace = this.currentWorkspace();
     if (!workspace) {
       return;
@@ -1310,6 +1395,7 @@ async function synchronizeTreeSelection(
   spacesView: vscode.TreeView<SpaceNode | { kind: "message"; label: string; icon: string }>,
   agentsView: vscode.TreeView<AgentNode | { kind: "message"; label: string; icon: string }>,
   output: vscode.LogOutputChannel,
+  selection: ActiveTreeSelection,
 ): Promise<void> {
   // Tree change events are delivered synchronously, while VS Code rebuilds the
   // visible rows asynchronously. Reveal only after that rebuild can observe the
@@ -1319,7 +1405,6 @@ async function synchronizeTreeSelection(
   if (!snapshot) {
     return;
   }
-  const selection = activeTreeSelection(snapshot);
   try {
     const space = selection.workspaceId && spaces.nodeForWorkspace(selection.workspaceId);
     if (spacesView.visible && space) {

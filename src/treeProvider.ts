@@ -32,6 +32,7 @@ export class HerdrSnapshotStore implements vscode.Disposable {
   readonly onDidChange = this.changeEmitter.event;
   snapshot: HerdrSnapshot | undefined;
   error: string | undefined;
+  offline = false;
   branches = new Map<string, string>();
   private viewKey: string | undefined;
 
@@ -41,6 +42,7 @@ export class HerdrSnapshotStore implements vscode.Disposable {
     this.snapshot = snapshot;
     this.branches = branches;
     this.error = undefined;
+    this.offline = false;
     this.viewKey = viewKey;
     if (changed) {
       this.changeEmitter.fire();
@@ -51,6 +53,19 @@ export class HerdrSnapshotStore implements vscode.Disposable {
     // Keep the last good tree stable across transient polling failures.
     const changed = this.snapshot === undefined && this.error !== message;
     this.error = message;
+    this.offline = false;
+    if (changed) {
+      this.changeEmitter.fire();
+    }
+  }
+
+  setOffline(): void {
+    const changed = this.snapshot !== undefined || this.error !== undefined || !this.offline;
+    this.snapshot = undefined;
+    this.error = undefined;
+    this.offline = true;
+    this.branches = new Map();
+    this.viewKey = undefined;
     if (changed) {
       this.changeEmitter.fire();
     }
@@ -203,6 +218,9 @@ function unavailableNode(
   emptyLabel: string,
   agents = false,
 ): MessageNode | undefined {
+  if (store.offline) {
+    return { kind: "message", label: emptyLabel, icon: "info" };
+  }
   if (store.error && !store.snapshot) {
     return { kind: "message", label: store.error, icon: "warning" };
   }

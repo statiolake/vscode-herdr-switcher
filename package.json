@@ -161,6 +161,12 @@
           "default": true,
           "description": "Create or associate a Herdr space for each folder opened in VS Code."
         },
+        "herdr.synchronizeState": {
+          "type": "boolean",
+          "scope": "application",
+          "default": false,
+          "description": "Synchronize VS Code window activation and workspace state with Herdr."
+        },
         "herdr.terminalLocation": {
           "type": "string",
           "scope": "application",
