@@ -9,6 +9,10 @@ test("overall status prioritizes unseen completed agents", () => {
   assert.equal(overallAgentStatus(["idle", "working", "done"]), "attention");
 });
 
+test("overall status prioritizes blocked agents", () => {
+  assert.equal(overallAgentStatus(["done", "working", "blocked"]), "blocked");
+});
+
 test("overall status shows working when no completed agent is unseen", () => {
   assert.equal(overallAgentStatus(["idle", "working"]), "working");
 });

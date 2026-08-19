@@ -57,6 +57,7 @@ export class OverallStatusBar implements vscode.Disposable {
 
 function overallPresentation(status: OverallAgentStatus): { icon: string; color?: string } {
   switch (status) {
+    case "blocked": return { icon: "warning", color: "testing.iconFailed" };
     case "attention": return { icon: "circle-filled", color: "charts.blue" };
     case "working": return { icon: "loading~spin", color: "charts.yellow" };
     case "idle": return { icon: "check", color: "testing.iconPassed" };

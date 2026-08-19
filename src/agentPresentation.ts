@@ -5,7 +5,7 @@ export interface AgentStatusPresentation {
   color?: string;
 }
 
-export type OverallAgentStatus = "attention" | "working" | "idle";
+export type OverallAgentStatus = "blocked" | "attention" | "working" | "idle";
 
 export function agentDisplayName(agent: HerdrAgent): string {
   return agent.name ?? agent.display_agent ?? agent.agent ?? agent.title ?? agent.pane_id;
@@ -34,6 +34,9 @@ export function agentStatusPresentation(status: AgentStatus): AgentStatusPresent
 }
 
 export function overallAgentStatus(statuses: readonly AgentStatus[]): OverallAgentStatus {
+  if (statuses.includes("blocked")) {
+    return "blocked";
+  }
   if (statuses.includes("done")) {
     return "attention";
   }
