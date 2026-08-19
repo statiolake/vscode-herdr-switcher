@@ -685,16 +685,29 @@ class HerdrController implements vscode.Disposable {
   async handleWindowActivated(): Promise<void> {
     await this.refresh(false);
     await this.reconcileWorkspace();
+    if (this.focusSidebarOnWindowActivation()) {
+      await this.focusHerdrSidebar();
+    }
     if (!await this.consumeNavigationIntent()) {
       await this.activateCurrentSpace();
     }
   }
 
-  private async focusSpace(workspaceId: string): Promise<void> {
+  private async focusHerdrSidebar(): Promise<void> {
+    try {
+      await vscode.commands.executeCommand("workbench.view.extension.herdr");
+      await vscode.commands.executeCommand("herdr.spaces.focus");
+    } catch (error) {
+      void vscode.window.showErrorMessage(`Could not focus Herdr sidebar: ${errorMessage(error)}`);
+    }
+  }
+
+  private async focusSpace(workspaceId: string, focusSidebar = true): Promise<void> {
     try {
       if (this.synchronizeState()) {
-        await vscode.commands.executeCommand("workbench.view.extension.herdr");
-        await vscode.commands.executeCommand("herdr.spaces.focus");
+        if (focusSidebar) {
+          await this.focusHerdrSidebar();
+        }
         await this.retryFocus(() => this.client.focusWorkspace(workspaceId));
       }
       await this.refresh(false);
@@ -709,7 +722,7 @@ class HerdrController implements vscode.Disposable {
     }
     const workspace = this.currentWorkspace();
     if (workspace) {
-      await this.focusSpace(workspace.workspace_id);
+      await this.focusSpace(workspace.workspace_id, false);
     }
   }
 
@@ -1274,6 +1287,11 @@ class HerdrController implements vscode.Disposable {
 
   private synchronizeState(): boolean {
     return vscode.workspace.getConfiguration("herdr").get<boolean>("synchronizeState", false);
+  }
+
+  private focusSidebarOnWindowActivation(): boolean {
+    return vscode.workspace.getConfiguration("herdr")
+      .get<boolean>("focusSidebarOnWindowActivation", false);
   }
 
   private shouldFocusHerdrAgent(): boolean {
