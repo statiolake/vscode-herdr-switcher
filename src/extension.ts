@@ -49,6 +49,7 @@ interface WorkspaceLocation {
 
 type HerdrTerminalLocation = "panel" | "editor";
 type AgentTerminalMode = "herdr" | "direct";
+type SidebarFocusMode = "never" | "switch" | "always";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel("Herdr", { log: true });
@@ -320,7 +321,7 @@ class HerdrController implements vscode.Disposable {
       }
       return;
     }
-    if (this.synchronizeState()) {
+    if (this.synchronizeState() || this.focusSidebarOnWindowActivation() === "switch") {
       await this.publishWorkspaceNavigation(node.workspace.workspace_id);
     }
     await vscode.commands.executeCommand(
@@ -685,10 +686,11 @@ class HerdrController implements vscode.Disposable {
   async handleWindowActivated(): Promise<void> {
     await this.refresh(false);
     await this.reconcileWorkspace();
-    if (this.focusSidebarOnWindowActivation()) {
+    const sidebarFocusMode = this.focusSidebarOnWindowActivation();
+    if (sidebarFocusMode === "always") {
       await this.focusHerdrSidebar();
     }
-    if (!await this.consumeNavigationIntent()) {
+    if (!await this.consumeNavigationIntent(sidebarFocusMode === "switch")) {
       await this.activateCurrentSpace();
     }
   }
@@ -729,7 +731,9 @@ class HerdrController implements vscode.Disposable {
   private async publishWorkspaceNavigation(workspaceId: string): Promise<void> {
     try {
       await this.navigationIntents.publishWorkspace(workspaceId);
-      await this.client.focusWorkspace(workspaceId);
+      if (this.synchronizeState()) {
+        await this.client.focusWorkspace(workspaceId);
+      }
     } catch (error) {
       this.output.warn(`Could not publish workspace navigation intent: ${errorMessage(error)}`);
     }
@@ -746,11 +750,11 @@ class HerdrController implements vscode.Disposable {
     }
   }
 
-  private async consumeNavigationIntent(): Promise<boolean> {
+  private async consumeNavigationIntent(focusSidebar = false): Promise<boolean> {
     if (this.navigationIntentPromise) {
       return this.navigationIntentPromise;
     }
-    const consumption = this.consumeNavigationIntentOnce();
+    const consumption = this.consumeNavigationIntentOnce(focusSidebar);
     this.navigationIntentPromise = consumption;
     try {
       return await consumption;
@@ -761,7 +765,7 @@ class HerdrController implements vscode.Disposable {
     }
   }
 
-  private async consumeNavigationIntentOnce(): Promise<boolean> {
+  private async consumeNavigationIntentOnce(focusSidebar: boolean): Promise<boolean> {
     if (!this.snapshot) {
       return false;
     }
@@ -794,6 +798,9 @@ class HerdrController implements vscode.Disposable {
       await this.navigationIntents.acknowledge(intent);
       this.consumedNavigationIntents.add(intent.requestId);
       this.output.debug(`Consuming Herdr navigation intent ${intent.requestId} (${intent.kind}).`);
+      if (focusSidebar) {
+        await this.focusHerdrSidebar();
+      }
       if (intent.kind === "workspace" && !this.synchronizeState()) {
         await this.refresh(false);
         return true;
@@ -1257,7 +1264,7 @@ class HerdrController implements vscode.Disposable {
   private async refreshAndReconcile(): Promise<void> {
     await this.refresh(false);
     await this.reconcileWorkspace();
-    await this.consumeNavigationIntent();
+    await this.consumeNavigationIntent(this.focusSidebarOnWindowActivation() === "switch");
     await this.ensureEventStream();
   }
 
@@ -1289,9 +1296,17 @@ class HerdrController implements vscode.Disposable {
     return vscode.workspace.getConfiguration("herdr").get<boolean>("synchronizeState", false);
   }
 
-  private focusSidebarOnWindowActivation(): boolean {
-    return vscode.workspace.getConfiguration("herdr")
-      .get<boolean>("focusSidebarOnWindowActivation", false);
+  private focusSidebarOnWindowActivation(): SidebarFocusMode {
+    const configured = vscode.workspace.getConfiguration("herdr")
+      .get<SidebarFocusMode | boolean>("focusSidebarOnWindowActivation", "never");
+    if (configured === true) {
+      // Preserve the behavior of the pre-enum boolean setting for existing users.
+      return "always";
+    }
+    if (configured === "switch" || configured === "always") {
+      return configured;
+    }
+    return "never";
   }
 
   private shouldFocusHerdrAgent(): boolean {

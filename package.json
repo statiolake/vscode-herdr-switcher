@@ -168,10 +168,16 @@
           "description": "Synchronize VS Code window activation and workspace state with Herdr."
         },
         "herdr.focusSidebarOnWindowActivation": {
-          "type": "boolean",
+          "type": "string",
           "scope": "application",
-          "default": false,
-          "description": "Focus the Herdr sidebar when switching to a VS Code window through Herdr."
+          "enum": ["never", "switch", "always"],
+          "enumDescriptions": [
+            "Never focus the Herdr sidebar automatically.",
+            "Focus the Herdr sidebar when Herdr switches to another VS Code window.",
+            "Focus the Herdr sidebar whenever a VS Code window becomes active."
+          ],
+          "default": "never",
+          "description": "Controls when the Herdr sidebar is focused automatically."
         },
         "herdr.terminalLocation": {
           "type": "string",
