@@ -19,6 +19,7 @@ import {
   nonShellForegroundProcesses,
   normalizeRoot,
   type ActiveTreeSelection,
+  type AgentNavigationContext,
   type AgentNavigationDirection,
   type SpaceBinding,
   type WorkspaceNavigationDirection,
@@ -115,6 +116,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         void controller.handleWindowActivated().then(syncSelection);
       }
     }),
+    vscode.window.onDidChangeActiveTerminal(() => { void syncSelection(); }),
+    vscode.window.onDidCloseTerminal(() => { void syncSelection(); }),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration("herdr")) {
         controller.reconfigure();
@@ -178,7 +181,7 @@ class HerdrController implements vscode.Disposable {
   activeAgent() {
     const association = this.currentWorkspaceAssociation();
     return association && this.snapshot
-      ? activeAgentForWorkspace(this.snapshot, association.workspace.workspace_id)
+      ? this.activeAgentForCurrentWindow(association.workspace.workspace_id)
       : undefined;
   }
 
@@ -190,9 +193,7 @@ class HerdrController implements vscode.Disposable {
       return activeTreeSelection(this.snapshot);
     }
     const association = this.currentWorkspaceAssociation();
-    const agent = association
-      ? activeAgentForWorkspace(this.snapshot, association.workspace.workspace_id)
-      : undefined;
+    const agent = association ? this.activeAgentForCurrentWindow(association.workspace.workspace_id) : undefined;
     return { agentPaneId: agent?.pane_id };
   }
 
@@ -477,7 +478,8 @@ class HerdrController implements vscode.Disposable {
       return;
     }
     const currentWorkspace = this.currentWorkspace();
-    const agent = adjacentAgent(this.snapshot, currentWorkspace?.workspace_id, direction);
+    const context = this.agentNavigationContext(currentWorkspace?.workspace_id);
+    const agent = adjacentAgent(this.snapshot, currentWorkspace?.workspace_id, direction, context);
     if (!agent) {
       return;
     }
@@ -513,7 +515,9 @@ class HerdrController implements vscode.Disposable {
 
   private async focusAgent(paneId: string): Promise<void> {
     if (this.agentTerminalMode === "direct") {
-      await this.retryFocus(() => this.client.focusAgent(paneId));
+      if (this.shouldFocusHerdrAgent()) {
+        await this.retryFocus(() => this.client.focusAgent(paneId));
+      }
       await this.prepareTerminal(this.agentTerminalTarget(paneId));
     } else {
       await this.prepareTerminal();
@@ -525,10 +529,14 @@ class HerdrController implements vscode.Disposable {
   async focusActiveAgent(): Promise<void> {
     await this.refresh(false);
     const workspace = this.currentWorkspace();
-    if (!workspace || !this.snapshot || !isFocusedWorkspace(this.snapshot, workspace.workspace_id)) {
+    if (!workspace || !this.snapshot) {
       return;
     }
-    const agent = activeAgentForWorkspace(this.snapshot, workspace.workspace_id);
+    const agent = this.synchronizeState()
+      ? isFocusedWorkspace(this.snapshot, workspace.workspace_id)
+        ? activeAgentForWorkspace(this.snapshot, workspace.workspace_id)
+        : undefined
+      : this.activeAgentForCurrentWindow(workspace.workspace_id);
     if (!agent) {
       return;
     }
@@ -553,9 +561,11 @@ class HerdrController implements vscode.Disposable {
     if (!workspace || !this.snapshot) {
       return;
     }
-    const activeAgent = isFocusedWorkspace(this.snapshot, workspace.workspace_id)
-      ? activeAgentForWorkspace(this.snapshot, workspace.workspace_id)
-      : undefined;
+    const activeAgent = this.synchronizeState()
+      ? isFocusedWorkspace(this.snapshot, workspace.workspace_id)
+        ? activeAgentForWorkspace(this.snapshot, workspace.workspace_id)
+        : undefined
+      : this.activeAgentForCurrentWindow(workspace.workspace_id);
     const target = activeAgent ?? agentInAdjacentWorkspace(this.snapshot, workspace.workspace_id, direction);
     if (!target) {
       return;
@@ -1054,6 +1064,56 @@ class HerdrController implements vscode.Disposable {
     return undefined;
   }
 
+  private activeAgentForCurrentWindow(workspaceId: string): HerdrAgent | undefined {
+    if (!this.snapshot) {
+      return undefined;
+    }
+    if (this.synchronizeState()) {
+      return activeAgentForWorkspace(this.snapshot, workspaceId);
+    }
+
+    const terminal = vscode.window.activeTerminal;
+    if (!terminal) {
+      return undefined;
+    }
+    const paneId = this.terminals.agentPaneId(terminal);
+    if (paneId) {
+      return this.snapshot.agents.find((agent) =>
+        agent.workspace_id === workspaceId && agent.pane_id === paneId,
+      );
+    }
+    if (this.terminals.isSessionTerminal(terminal)) {
+      return activeAgentForWorkspace(this.snapshot, workspaceId);
+    }
+    return undefined;
+  }
+
+  private agentNavigationContext(workspaceId: string | undefined): AgentNavigationContext | undefined {
+    if (this.synchronizeState()) {
+      return undefined;
+    }
+    if (!this.snapshot || !workspaceId) {
+      return {};
+    }
+
+    const terminal = vscode.window.activeTerminal;
+    if (!terminal) {
+      return {};
+    }
+    const paneId = this.terminals.agentPaneId(terminal);
+    if (paneId) {
+      const agent = this.snapshot.agents.find((candidate) =>
+        candidate.workspace_id === workspaceId && candidate.pane_id === paneId,
+      );
+      return agent ? { focusedPaneId: paneId } : {};
+    }
+    if (this.terminals.isSessionTerminal(terminal)) {
+      const agent = activeAgentForWorkspace(this.snapshot, workspaceId);
+      return { focusedPaneId: agent?.pane_id };
+    }
+    return {};
+  }
+
   private async retryFocus(operation: () => Promise<void>): Promise<void> {
     let lastError: unknown;
     for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -1214,6 +1274,10 @@ class HerdrController implements vscode.Disposable {
 
   private synchronizeState(): boolean {
     return vscode.workspace.getConfiguration("herdr").get<boolean>("synchronizeState", false);
+  }
+
+  private shouldFocusHerdrAgent(): boolean {
+    return this.synchronizeState() || this.agentTerminalMode !== "direct";
   }
 
   private async reportWindowPresence(): Promise<void> {

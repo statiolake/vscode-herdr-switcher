@@ -100,6 +100,16 @@ test("agent navigation starts at the global Space-order boundary when current Sp
   assert.equal(adjacentAgent(value, "w2", "previous")?.pane_id, "w2:p1");
 });
 
+test("agent navigation can use an explicit VS Code terminal focus", () => {
+  const value = structuredClone(snapshot);
+  value.focused_pane_id = "w1:p2";
+  assert.equal(
+    adjacentAgent(value, "w1", "previous", { focusedPaneId: "w1:p2" })?.pane_id,
+    "w1:p1",
+  );
+  assert.equal(adjacentAgent(value, "w1", "previous", {})?.pane_id, "w1:p2");
+});
+
 test("active-agent fallback chooses the nearest populated Space in direction", () => {
   const value = structuredClone(snapshot);
   value.panes.push({ pane_id: "w2:p1", workspace_id: "w2", tab_id: "w2:t1" });

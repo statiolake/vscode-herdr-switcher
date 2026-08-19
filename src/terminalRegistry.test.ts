@@ -23,6 +23,10 @@ test("tracks one terminal per Agent pane independently from the session", () => 
   assert.equal(registry.get(session), sessionTerminal);
   assert.equal(registry.get(firstAgent), firstTerminal);
   assert.equal(registry.get(secondAgent), secondTerminal);
+  assert.equal(registry.agentPaneId(firstTerminal), "w1:p1");
+  assert.equal(registry.agentPaneId(sessionTerminal), undefined);
+  assert.equal(registry.isSessionTerminal(sessionTerminal), true);
+  assert.equal(registry.isSessionTerminal(firstTerminal), false);
 });
 
 test("forgets a closed terminal without affecting other panes", () => {

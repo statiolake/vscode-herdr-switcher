@@ -31,6 +31,25 @@ export class TerminalRegistry<T extends TerminalHandle> {
     return this.get(target) === terminal;
   }
 
+  agentPaneId(terminal: T | undefined): string | undefined {
+    if (!terminal || terminal.exitStatus !== undefined) {
+      if (terminal) {
+        this.remove(terminal);
+      }
+      return undefined;
+    }
+    for (const [paneId, candidate] of this.agents) {
+      if (candidate === terminal) {
+        return paneId;
+      }
+    }
+    return undefined;
+  }
+
+  isSessionTerminal(terminal: T | undefined): boolean {
+    return terminal !== undefined && this.get({ kind: "session" }) === terminal;
+  }
+
   remove(terminal: T): void {
     if (this.session === terminal) {
       this.session = undefined;

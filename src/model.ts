@@ -93,23 +93,34 @@ export function agentsInDisplayOrder(snapshot: HerdrSnapshot): HerdrAgent[] {
 
 export type AgentNavigationDirection = "next" | "previous";
 
+export interface AgentNavigationContext {
+  /** The Agent pane represented by the active VS Code terminal, if any. */
+  focusedPaneId?: string;
+}
+
 /**
  * Returns the agent adjacent to Herdr's current focus in the global Agents
  * order. When focus is not an agent in the current VS Code space, navigation
- * starts at the first or last agent in that global order. The order is grouped
- * by Space, then tab, then pane.
+ * starts at the first or last agent in that global order. When a context is
+ * supplied, its explicit terminal focus replaces Herdr's snapshot focus.
+ * The order is grouped by Space, then tab, then pane.
  */
 export function adjacentAgent(
   snapshot: HerdrSnapshot,
   currentWorkspaceId: string | undefined,
   direction: AgentNavigationDirection,
+  context?: AgentNavigationContext,
 ): HerdrAgent | undefined {
   const ordered = agentsInDisplayOrder(snapshot);
   if (ordered.length === 0) {
     return undefined;
   }
 
-  const activeAgent = focusedAgentInSnapshot(snapshot);
+  const activeAgent = context
+    ? context.focusedPaneId
+      ? ordered.find((agent) => agent.pane_id === context.focusedPaneId)
+      : undefined
+    : focusedAgentInSnapshot(snapshot);
   const focusedIndex = activeAgent
     ? ordered.findIndex((agent) => agent.pane_id === activeAgent.pane_id)
     : -1;
