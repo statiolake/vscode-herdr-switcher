@@ -26,7 +26,7 @@ export function isDefaultTabLabel(tab: Pick<HerdrTab, "label" | "number">): bool
 export function agentStatusPresentation(status: AgentStatus): AgentStatusPresentation {
   switch (status) {
     case "blocked": return { icon: "warning", color: "testing.iconFailed" };
-    case "working": return { icon: "loading~spin", color: "charts.yellow" };
+    case "working": return { icon: "loading", color: "charts.yellow" };
     case "done": return { icon: "circle-filled", color: "charts.blue" };
     case "idle": return { icon: "check", color: "testing.iconPassed" };
     case "unknown": return { icon: "circle-outline" };

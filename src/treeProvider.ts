@@ -225,7 +225,7 @@ function unavailableNode(
     return { kind: "message", label: store.error, icon: "warning" };
   }
   if (!store.snapshot) {
-    return { kind: "message", label: "Connecting to Herdr…", icon: "loading~spin" };
+    return { kind: "message", label: "Connecting to Herdr…", icon: "loading" };
   }
   const empty = agents ? store.snapshot.agents.length === 0 : store.snapshot.workspaces.length === 0;
   return empty ? { kind: "message", label: emptyLabel, icon: "info" } : undefined;

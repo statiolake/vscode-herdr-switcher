@@ -26,7 +26,7 @@ test("status presentation keeps every state recognizable without color", () => {
   const statuses = ["blocked", "working", "done", "idle", "unknown"] as const;
   const icons = statuses.map((status) => agentStatusPresentation(status).icon);
 
-  assert.deepEqual(icons, ["warning", "loading~spin", "circle-filled", "check", "circle-outline"]);
+  assert.deepEqual(icons, ["warning", "loading", "circle-filled", "check", "circle-outline"]);
   assert.equal(new Set(icons).size, statuses.length);
 });
 
