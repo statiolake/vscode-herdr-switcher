@@ -85,9 +85,12 @@ function overallTooltip(snapshot: HerdrSnapshot): vscode.MarkdownString {
     const name = agentDisplayName(agent);
     const description = agentDescription(snapshot, agent);
     const statusPresentation = agentStatusPresentation(agent.agent_status);
+    // Markdown treats the Codicon animation modifier's `~` as strikethrough
+    // syntax when multiple working rows are concatenated into one tooltip.
+    const tooltipIcon = statusPresentation.icon.replace(/~spin$/, "");
     const icon = statusPresentation.color
-      ? `<span style="color:${themeColorVariable(statusPresentation.color)};">$(${statusPresentation.icon})</span>`
-      : `$(${statusPresentation.icon})`;
+      ? `<span style="color:${themeColorVariable(statusPresentation.color)};">$(${tooltipIcon})</span>`
+      : `$(${tooltipIcon})`;
     const command = `command:${OPEN_AGENT_COMMAND}?${encodeURIComponent(JSON.stringify([agent.pane_id]))}`;
     const workspaceLabel = escapeMarkdown(workspace?.label ?? agent.workspace_id);
     const descriptionLabel = `<span style="color:var(--vscode-descriptionForeground);">${escapeMarkdown(description)}</span>`;
