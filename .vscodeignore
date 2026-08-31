@@ -1,0 +1,48 @@
+# Source files (bundled by esbuild into dist/extension.js)
+src/**
+
+# Build artifacts
+out/**
+out-test/**
+dist/**/*.map
+**/*.map
+
+# Development / editor files
+.vscode/**
+.vscode-test/**
+.devcontainer/**
+.agent-container/**
+.github/**
+.claude/**
+
+# Config files
+.gitignore
+.editorconfig
+tsconfig.json
+tsconfig.*.json
+eslint.config.mjs
+biome.json
+esbuild.js
+
+# Package manager
+node_modules/**
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Docs not shipped to users
+vsc-extension-quickstart.md
+
+# Previously built packages
+*.vsix
+
+# Secrets - never ship these
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+.ovsx-token
+.vsce-token
+.npmrc

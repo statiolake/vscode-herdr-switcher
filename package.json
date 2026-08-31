@@ -2,7 +2,7 @@
   "name": "vscode-herdr-switcher",
   "displayName": "Herdr Switcher",
   "description": "Monitor Herdr spaces and AI coding agents, switch project windows, and focus active agents from VS Code.",
-  "version": "0.1.28",
+  "version": "0.2.0",
   "publisher": "statiolake",
   "repository": {
     "type": "git",
@@ -31,12 +31,6 @@
     "onView:herdr.agents"
   ],
   "main": "./dist/extension.js",
-  "files": [
-    "dist/extension.js",
-    "media/**",
-    "README.md",
-    "LICENSE"
-  ],
   "contributes": {
     "commands": [
       {
@@ -170,7 +164,11 @@
         "herdr.focusSidebarOnWindowActivation": {
           "type": "string",
           "scope": "application",
-          "enum": ["never", "switch", "always"],
+          "enum": [
+            "never",
+            "switch",
+            "always"
+          ],
           "enumDescriptions": [
             "Never focus the Herdr sidebar automatically.",
             "Focus the Herdr sidebar when Herdr switches to another VS Code window.",
@@ -182,7 +180,10 @@
         "herdr.terminalLocation": {
           "type": "string",
           "scope": "application",
-          "enum": ["panel", "editor"],
+          "enum": [
+            "panel",
+            "editor"
+          ],
           "enumDescriptions": [
             "Open Herdr in the Terminal view. This follows the view if it has been moved to the Secondary Side Bar.",
             "Open Herdr as a pinned terminal editor."
@@ -193,7 +194,10 @@
         "herdr.agentTerminalMode": {
           "type": "string",
           "scope": "application",
-          "enum": ["herdr", "direct"],
+          "enum": [
+            "herdr",
+            "direct"
+          ],
           "enumDescriptions": [
             "Open the full Herdr interface and focus the selected Agent pane.",
             "Attach a dedicated terminal directly to each selected Agent pane."
@@ -213,13 +217,28 @@
           "type": "array",
           "scope": "application",
           "default": [
-            { "name": "Claude Code", "command": ["claude"], "kind": "claude" },
-            { "name": "Codex", "command": ["codex"], "kind": "codex" }
+            {
+              "name": "Claude Code",
+              "command": [
+                "claude"
+              ],
+              "kind": "claude"
+            },
+            {
+              "name": "Codex",
+              "command": [
+                "codex"
+              ],
+              "kind": "codex"
+            }
           ],
           "description": "Agents available from the Herdr Agents view.",
           "items": {
             "type": "object",
-            "required": ["name", "command"],
+            "required": [
+              "name",
+              "command"
+            ],
             "properties": {
               "name": {
                 "type": "string",
@@ -229,7 +248,9 @@
               "command": {
                 "type": "array",
                 "minItems": 1,
-                "items": { "type": "string" },
+                "items": {
+                  "type": "string"
+                },
                 "description": "Command and arguments to run in the new Herdr pane."
               },
               "kind": {
@@ -321,18 +342,22 @@
     }
   },
   "scripts": {
-    "build": "esbuild src/extension.ts --bundle --platform=node --external:vscode --sourcemap --outfile=dist/extension.js",
-    "watch": "esbuild src/extension.ts --bundle --platform=node --external:vscode --sourcemap --outfile=dist/extension.js --watch",
+    "build": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
     "check": "tsc --noEmit",
     "test": "npm run check && node -e \"require('node:fs').rmSync('out-test', { recursive: true, force: true })\" && tsc -p tsconfig.test.json && node --test out-test/*.test.js",
-    "package": "npm test && npm run build && vsce package",
-    "publish": "npm test && npm run build && vsce publish"
+    "package": "vsce package",
+    "publish": "npm run publish:vsce && npm run publish:ovsx",
+    "vscode:prepublish": "npm test && node esbuild.js --production",
+    "publish:vsce": "vsce publish",
+    "publish:ovsx": "ovsx publish"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@types/vscode": "^1.96.0",
     "@vscode/vsce": "^3.9.2",
     "esbuild": "^0.28.1",
+    "ovsx": "^1.1.1",
     "typescript": "^5.7.2"
   }
 }
