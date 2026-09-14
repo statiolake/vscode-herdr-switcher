@@ -2,7 +2,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { agentShellCommand, configuredAgents, type ConfiguredAgent } from "./agentConfiguration";
 import { agentDisplayName } from "./agentPresentation";
-import { decodeDevContainerHostPath } from "./devContainer";
+import { herdrRootForFolder } from "./workspaceRoot";
 import { GitBranchProvider } from "./gitBranchProvider";
 import { HerdrClient, HerdrCommandError } from "./herdrClient";
 import { HerdrDirectTerminal } from "./directTerminal";
@@ -1371,14 +1371,8 @@ class HerdrController implements vscode.Disposable {
   }
 
   private workspaceLocation(folder: vscode.WorkspaceFolder): WorkspaceLocation | undefined {
-    if (!vscode.env.remoteName) {
-      return { root: folder.uri.fsPath, workspaceUri: folder.uri };
-    }
-    if (vscode.env.remoteName !== "dev-container" || folder.uri.scheme !== "vscode-remote") {
-      return undefined;
-    }
-    const root = decodeDevContainerHostPath(folder.uri.authority);
-    return root ? { root, workspaceUri: folder.uri } : undefined;
+    const result = herdrRootForFolder(folder.uri);
+    return result.kind === "root" ? { root: result.root, workspaceUri: folder.uri } : undefined;
   }
 
   private currentWorkspaceLocation(): WorkspaceLocation | undefined {
@@ -1409,9 +1403,11 @@ class HerdrController implements vscode.Disposable {
       return;
     }
     this.reportedWorkspaceLocationErrors.add(key);
-    const detail = vscode.env.remoteName === "dev-container"
-      ? "the local host path could not be decoded from the Dev Container URI"
-      : `remote type “${vscode.env.remoteName ?? "unknown"}” is not supported`;
+    const result = herdrRootForFolder(folder.uri);
+    if (result.kind !== "unsupported") {
+      throw new Error(`Workspace folder ${key} resolves to a Herdr root but was reported as unsupported`);
+    }
+    const { detail } = result;
     const message = `Could not associate “${folder.name}” with Herdr because ${detail}.`;
     this.output.error(`${message} URI: ${folder.uri.toString()}`);
     void vscode.window.showWarningMessage(message);
