@@ -23,10 +23,20 @@ Bring [Herdr](https://github.com/ogulcancelik/herdr) spaces and AI coding agents
 
 If Herdr is installed elsewhere, set `herdr.executable` to its path.
 
-Herdr Switcher is a UI extension: Herdr and configured agents run on the machine
-where VS Code is installed. Dev Container workspaces are associated with their
-decoded host path, while navigation still reopens the corresponding container
-window. Other VS Code remote types are not currently supported.
+Herdr Switcher is a UI extension by default: Herdr and configured agents run on
+the machine where VS Code is installed. Dev Container workspaces on that machine
+are associated with their decoded host path, while navigation still reopens the
+corresponding container window.
+
+To use the Herdr on the remote side of a VS Code remote window instead, run the
+extension on the remote extension host by adding this to your local user
+settings and installing the extension on the remote:
+
+```jsonc
+"remote.extensionKind": {
+  "statiolake.vscode-herdr-switcher": ["workspace"]
+}
+```
 
 ## Getting started
 
